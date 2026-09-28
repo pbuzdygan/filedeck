@@ -1,6 +1,6 @@
 # Bezpieczeństwo Filedeck — mapowanie advisory File Browser
 
-Stan na 2026-09-28. Źródło listy: [rejestr 62 advisory](../../docs/analysis/05-advisories.md) (GitHub Security Advisories projektu File Browser). Dla każdego zgłoszenia: klasa problemu, jak Filedeck ją eliminuje i czym to jest sprawdzone.
+Stan na 2026-09-28. Źródło listy: [rejestr 62 advisory](analysis/05-advisories.md) (GitHub Security Advisories projektu File Browser). Dla każdego zgłoszenia: klasa problemu, jak Filedeck ją eliminuje i czym to jest sprawdzone.
 
 Statusy:
 - ✅ **zaadresowane** — mechanizm w kodzie i test automatyczny (nazwy testów w kolumnie „Dowód”);

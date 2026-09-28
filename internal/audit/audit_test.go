@@ -24,6 +24,13 @@ func TestNoProcessExecutionOrPlugins(t *testing.T) {
 		if d.IsDir() && (d.Name() == "node_modules" || d.Name() == ".git" || d.Name() == "test") {
 			return filepath.SkipDir
 		}
+		// Another Go module (e.g. the File Browser reference checkout in
+		// reference/) is not part of Filedeck.
+		if d.IsDir() && p != root {
+			if _, err := os.Stat(filepath.Join(p, "go.mod")); err == nil {
+				return filepath.SkipDir
+			}
+		}
 		if d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
 			return nil
 		}

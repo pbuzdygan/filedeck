@@ -7,3 +7,8 @@ compose*.yaml
 .env.example
 test/ui/node_modules
 test/ui/out
+reference
+docs
+AGENTS.md
+CLAUDE.md
+CHANGELOG.md

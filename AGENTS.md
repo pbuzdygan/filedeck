@@ -1,18 +1,18 @@
 # Filedeck — instrukcje dla agentów AI (Codex, Claude Code i inne)
 
-Ten plik jest jedynym źródłem kontekstu projektu dla agentów. Czytaj go na starcie każdej sesji. Stan prac: `filedeck/docs/PROGRESS.md` (sekcja „Następny etap”).
+Ten plik jest jedynym źródłem kontekstu projektu dla agentów. Czytaj go na starcie każdej sesji. Stan prac: `docs/PROGRESS.md` (sekcja „Następny etap”).
 
 ## Projekt
 
-- **Filedeck** (`filedeck/`, Go, tylko Linux + Docker) to napisany od zera, security-first następca File Browser. Cel: domknąć klasy błędów z 62 advisory GHSA oryginału prostszym projektem, nie przez port kodu.
-- `reference/filebrowser/` to archiwalny fork oryginału — **tylko do czytania, nigdy nie modyfikuj**.
+- **Filedeck** (to repozytorium, Go, tylko Linux + Docker) to napisany od zera, security-first następca File Browser. Cel: domknąć klasy błędów z 62 advisory GHSA oryginału prostszym projektem, nie przez port kodu.
+- `reference/filebrowser/` to archiwalny fork oryginału — **tylko do czytania, nigdy nie modyfikuj**; jest wykluczony z gita (`.gitignore`), więc może nie istnieć w innym klonie.
 - `docs/analysis/` — analiza oryginału (funkcje, znaleziska, projekt, rejestr advisory).
 - Katalogi Filedeck są jednocześnie używane przez inne aplikacje i udziały SMB/NFS: nigdy nie nadpisuj, publikuj atomowo, zakładaj, że pliki zmieniają się pod spodem.
 
 ## Rozmowa i język
 
-- Z użytkownikiem rozmawiaj **po polsku**. Dokumenty w `filedeck/docs/` i README są po polsku.
-- Interfejs jest **domyślnie po angielsku**, z przełącznikiem na polski. Każdy nowy lub zmieniony tekst UI musi trafić do obu plików: `filedeck/internal/web/static/lang-en.json` i `lang-pl.json`. Nigdy nie wpisuj tekstu na sztywno w `app.js`/`index.html` — używaj `t('klucz')` i `data-i18n*`. `TestTranslations` pilnuje kompletności.
+- Z użytkownikiem rozmawiaj **po polsku**. Dokumenty w `docs/` i README są po polsku.
+- Interfejs jest **domyślnie po angielsku**, z przełącznikiem na polski. Każdy nowy lub zmieniony tekst UI musi trafić do obu plików: `internal/web/static/lang-en.json` i `lang-pl.json`. Nigdy nie wpisuj tekstu na sztywno w `app.js`/`index.html` — używaj `t('klucz')` i `data-i18n*`. `TestTranslations` pilnuje kompletności.
 
 ## Zasady kodu
 
@@ -25,33 +25,33 @@ Ten plik jest jedynym źródłem kontekstu projektu dla agentów. Czytaj go na s
   - katalog `.filedeck` jest nieosiągalny.
 - **Zmiany:**
   - każda funkcja dostaje testy Go;
-  - przy zmianie kontraktu aktualizuj `filedeck/docs/CONTRACT.md`;
+  - przy zmianie kontraktu aktualizuj `docs/CONTRACT.md`;
   - po etapie dopisz sekcję w `docs/PROGRESS.md`;
   - wpływ na advisory opisz w `docs/SECURITY.md`;
-  - wpis w `filedeck/CHANGELOG.md` dodaj w sekcji New Features, Improvements albo Bug Fixes. Pisz nietechnicznie: co użytkownik zobaczy, z czego skorzysta, co odczuje.
+  - wpis w `CHANGELOG.md` dodaj w sekcji New Features, Improvements albo Bug Fixes. Pisz nietechnicznie: co użytkownik zobaczy, z czego skorzysta, co odczuje.
 
 ## Środowisko (ważne — ograniczone zasoby)
 
 Serwer to LXC z 6 GB RAM, 3 CPU i **bez swapu**. `/tmp` leży w RAM i znika po restarcie. Równoległe ciężkie zadania (build obrazu razem z Playwright) doprowadziły już do twardego resetu maszyny.
 
-- Na hoście nie ma `go`, `gcc` ani `make`. Testy w kontenerze, z katalogu `filedeck/`:
+- Na hoście nie ma `go`, `gcc` ani `make`. Testy w kontenerze, z katalogu głównego repozytorium:
   ```sh
   docker run --rm --memory 2g --cpus 2 -u $(id -u):$(id -g) -v "$PWD":/src \
     -v ~/.cache/filedeck-go/mod:/go/pkg/mod -v ~/.cache/filedeck-go/build:/cache \
     -e GOCACHE=/cache -e GOFLAGS=-buildvcs=false -e HOME=/tmp -w /src \
-    golang:1.27.1-bookworm sh -c 'gofmt -l . && go vet ./... && go test ./...'
+    golang:1.27.1-bookworm sh -c 'test -z "$(gofmt -l cmd internal)" && go vet ./... && go test ./...'
   ```
   Dodaj `-race`, gdy zmieniasz współbieżność.
 - Obraz: `docker build --memory 2g -t filedeck:local .`
 - Test przeglądarkowy:
-  - skrypt: `filedeck/test/ui/smoke.mjs`, uruchamiany poleceniem `docker run` z celu `ui-test` w `filedeck/Makefile` (na hoście nie ma `make`; to gotowy obraz Playwright z limitem 2 GB);
+  - skrypt: `test/ui/smoke.mjs`, uruchamiany poleceniem `docker run` z celu `ui-test` w `Makefile` (na hoście nie ma `make`; to gotowy obraz Playwright z limitem 2 GB);
   - uruchamiaj go na **osobnej, jednorazowej instancji** (`docker compose -p filedeck-<nazwa>`, katalogi testowe w `~/.cache/filedeck-test`, nigdy w `/tmp`);
   - potem usuń instancję i `test/ui/node_modules`.
 - **Nigdy nie uruchamiaj buildu i Playwright jednocześnie.**
 
 ## Instancja użytkownika (produkcyjna, nie psuj)
 
-- Działa z `filedeck/` przez `docker compose`, adres `https://192.168.68.6:8443`.
+- Działa z katalogu głównego repozytorium przez `docker compose` (projekt `name: filedeck`, wolumeny `filedeck_*`), adres `https://192.168.68.6:8443`.
 - Konfiguracja w `.env`: `FILEDECK_BIND`, `FILEDECK_ORIGIN`, `FILEDECK_USER=1001:1001`.
 - Dodatkowe przestrzenie są w `compose.yaml`/`compose.override.yaml` jako `/spaces/<nazwa>`, np. `docker_dev`. Własna przestrzeń to `/files`.
 - Wdrożenie po zmianach: `docker compose up -d --build`, potem sprawdź `docker compose ps` (musi być `healthy`).

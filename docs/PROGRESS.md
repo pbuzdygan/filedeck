@@ -55,7 +55,7 @@ Weryfikacja: `go test` i `go vet` lokalnie; `go test -race` w obrazie `golang:1.
 
 ### Co etap 2 adresuje w rejestrze GHSA
 
-Mechanizmy i testy tego etapu odpowiadają klasom z sekcji „Konta i sesje” [rejestru advisory](../../docs/analysis/05-advisories.md):
+Mechanizmy i testy tego etapu odpowiadają klasom z sekcji „Konta i sesje” [rejestru advisory](analysis/05-advisories.md):
 
 - Sesje serwerowe z odwołaniem: GHSA-7xwp-2cpp-p8r7 (replay po wylogowaniu), GHSA-v7vv-5wj2-gfcj (reset hasła nie unieważnia sesji), GHSA-v3jv-rmh2-635j (wygasłe JWT przy proxy auth).
 - Brak auth nagłówkiem proxy i brak auto-provisioningu: GHSA-xqp3-jq6g-x3qm, GHSA-j7jh-37pf-mf8h, GHSA-7526-j432-6ppp.

@@ -1,6 +1,6 @@
 # Pierwszy etap implementacji
 
-Powstał nowy projekt w [filedeck](../../filedeck/README.md), z niezależnym modułem Go i kodem napisanym od nowa.
+Powstał nowy projekt w [filedeck](../../README.md), z niezależnym modułem Go i kodem napisanym od nowa.
 
 Zrealizowano prototyp storage, uprawnień i uploadu, zgodnie z kierunkiem etapu B planu. Rozstrzygnięcia na ten etap:
 
@@ -11,4 +11,4 @@ Zrealizowano prototyp storage, uprawnień i uploadu, zgodnie z kierunkiem etapu 
 - Restart usuwa porzucony staging zamiast udawać możliwość wznowienia.
 - Lokalne CLI jako narzędzie testowania; HTTP, sesje i UI pozostają następnym etapem.
 
-[Kontrakt i ograniczenia](../../filedeck/docs/CONTRACT.md) precyzują semantykę uchwytów, zmiany zewnętrzne i warunki wdrożenia. [Stan realizacji i weryfikacja](../../filedeck/docs/PROGRESS.md) zawierają listę scenariuszy testowych oraz mapowanie do klas GHSA. Pełny audyt i weryfikacja pozostałych advisory nadal pozostają otwarte.
+[Kontrakt i ograniczenia](../CONTRACT.md) precyzują semantykę uchwytów, zmiany zewnętrzne i warunki wdrożenia. [Stan realizacji i weryfikacja](../PROGRESS.md) zawierają listę scenariuszy testowych oraz mapowanie do klas GHSA. Pełny audyt i weryfikacja pozostałych advisory nadal pozostają otwarte.
