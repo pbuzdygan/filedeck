@@ -57,6 +57,12 @@ type API struct {
 	setup    string
 	// texts bounds concurrent text saves, each buffering up to maxTextJSON.
 	texts chan struct{}
+	// Public links: password attempts, unlock cookie key, download slots.
+	unlocks   *limiter
+	unlockKey []byte
+	downloads chan struct{}
+	// timeout bounds each request (RequestTimeout; shorter in tests).
+	timeout time.Duration
 }
 
 // newSetupCode returns 80 random bits as four groups of Crockford-like base32.
@@ -100,7 +106,9 @@ func New(store *identity.Store, files *core.Service, c Config) (*API, error) {
 	} else if u.Scheme != "https" {
 		return nil, errors.New("HTTPS origin required")
 	}
-	a := &API{store: store, files: files, config: c, origin: u, cookie: "__Host-filedeck", capacity: make(chan struct{}, 64), texts: make(chan struct{}, 4), logins: newLimiter(), mux: http.NewServeMux()}
+	a := &API{store: store, files: files, config: c, origin: u, cookie: "__Host-filedeck", capacity: make(chan struct{}, 64), texts: make(chan struct{}, 4), logins: newLimiter(), mux: http.NewServeMux(),
+		unlocks: newLimiter(), unlockKey: make([]byte, 32), downloads: make(chan struct{}, maxPublicDownloads), timeout: RequestTimeout}
+	rand.Read(a.unlockKey)
 	if c.InsecureLocal {
 		a.cookie = "filedeck-local"
 	}
@@ -190,10 +198,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 503, "request_capacity")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), a.timeout)
 	defer cancel()
 	r = r.WithContext(ctx)
-	deadline := time.Now().Add(RequestTimeout)
+	deadline := time.Now().Add(a.timeout)
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(deadline)
 	_ = rc.SetWriteDeadline(deadline)
@@ -224,6 +232,12 @@ func classify(err error) (int, string) {
 		return 413, "upload_size"
 	case errors.Is(err, storage.ErrCopyLimit):
 		return 413, "copy_limit"
+	case errors.Is(err, core.ErrLinkNotFound), errors.Is(err, storage.ErrGone):
+		return 404, "link_unavailable"
+	case errors.Is(err, core.ErrLinkPassword):
+		return 403, "link_wrong_password"
+	case errors.Is(err, core.ErrLinkInput):
+		return 400, "invalid_input"
 	case errors.Is(err, core.ErrDenied), errors.Is(err, os.ErrPermission), errors.Is(err, unix.ELOOP), errors.Is(err, unix.EXDEV):
 		return 403, "forbidden"
 	case errors.Is(err, storage.ErrReadOnly):
@@ -669,6 +683,7 @@ func (a *API) routes() {
 		w.WriteHeader(204)
 	}, false, false))
 	a.adminRoutes()
+	a.linkRoutes()
 }
 
 // queryPath accepts exactly "space" and an optional "path", each once.
@@ -717,24 +732,13 @@ func (a *API) content(w http.ResponseWriter, r *http.Request, l identity.Login) 
 	if !ok {
 		return
 	}
-	if strings.Contains(r.Header.Get("Range"), ",") {
-		fail(w, 416, "single_range_only")
-		return
-	}
 	f, err := a.files.Read(r.Context(), l.User.ID, space, name)
 	if err != nil {
 		problem(w, err)
 		return
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		problem(w, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(name)}))
-	http.ServeContent(w, r, path.Base(name), info.ModTime(), f)
+	a.download(w, r, path.Base(name), f)
 }
 
 // maxTextJSON bounds a text save request: JSON escaping can expand content.
@@ -813,7 +817,7 @@ func (a *API) preview(w http.ResponseWriter, r *http.Request, l identity.Login) 
 		// HTML and nosniff keeps it that way. Only our own page may frame it.
 		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'self'")
 	}
-	http.ServeContent(w, r, path.Base(name), info.ModTime(), f)
+	http.ServeContent(&streaming{ResponseWriter: w, rc: http.NewResponseController(w), idle: a.timeout}, r, path.Base(name), info.ModTime(), f)
 }
 
 func (a *API) patch(w http.ResponseWriter, r *http.Request, l identity.Login) {

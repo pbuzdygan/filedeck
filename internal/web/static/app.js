@@ -235,7 +235,7 @@ function ask({ title, text = '', label = '', value = null, ok = t('common.ok') }
 
 // ---------- session ----------
 
-const VIEWS = ['setup-view', 'login-view', 'files-view', 'editor-view', 'trash-view', 'admin-view'];
+const VIEWS = ['setup-view', 'login-view', 'files-view', 'editor-view', 'trash-view', 'links-view', 'admin-view'];
 function show(view) {
   for (const id of VIEWS) $(id).hidden = id !== view;
   $('session').hidden = view === 'login-view' || view === 'setup-view';
@@ -296,6 +296,7 @@ function rerender() {
   const view = currentView();
   if (view === 'files-view' && state.space) openFolder(state.space, state.path);
   else if (view === 'trash-view') openTrash();
+  else if (view === 'links-view') openLinks();
   else if (view === 'admin-view') openAdmin();
 }
 
@@ -533,6 +534,7 @@ function renderEntries() {
     } else {
       if (!entry.directory && canRead && canModify && isTextName(entry.name)) actions.append(iconButton('pencil', t('action.edit'), () => openEditor(space, target)));
       if (canRead) actions.append(iconButton('copy', t('action.copy_move'), () => openTransfer([entry])));
+      if (canRead && (!entry.directory || can(PERM.list))) actions.append(iconButton('share', t('action.share'), () => openShare(entry, target)));
       if (canModify) {
         actions.append(iconButton('forms', t('action.rename'), () => renameEntry(entry, target)));
         actions.append(iconButton('trash', t('action.delete'), () => trashEntries([entry]), 'danger'));
@@ -699,7 +701,7 @@ async function openTrash() {
     const actions = el('span', { className: 'row-actions' }, iconButton('arrow-back-up', t('action.restore'), () => restoreItem(it)));
     if (state.user.admin) actions.append(iconButton('trash-x', t('action.purge'), () => purgeItem(it), 'danger'));
     body.append(el('tr', {},
-      el('td', { className: 'name' }, icon(it.directory ? 'folder' : fileIcon(it.path || '')), origin),
+      el('td', {}, el('span', { className: 'name' }, icon(it.directory ? 'folder' : fileIcon(it.path || '')), origin)),
       el('td', { className: 'num', text: it.directory ? '—' : formatSize(it.size) }),
       el('td', { text: fmtTime(it.deleted) }),
       el('td', { className: 'num' }, actions)));
@@ -741,6 +743,92 @@ async function purgeItem(it) {
 
 $('open-trash').addEventListener('click', openTrash);
 $('close-trash').addEventListener('click', () => openFolder(state.space, state.path));
+
+// ---------- public links ----------
+// The server returns a link's address only when it is created (it keeps just a
+// hash of the token), so the dialog shows it once, with a copy button.
+
+let shareTarget = null;
+function openShare(entry, path) {
+  shareTarget = { space: state.space, path, name: entry.name };
+  const form = $('share-form');
+  form.reset();
+  $('share-source').textContent = t(entry.directory ? 'transfer.source_folder' : 'transfer.source_file', { path: where(state.space, path) });
+  $('share-hint').textContent = t(entry.directory ? 'share.hint_folder' : 'share.hint_file');
+  $('share-settings').hidden = false;
+  $('share-result').hidden = true;
+  $('share-submit').hidden = false;
+  $('share-copy').hidden = true;
+  $('share-dialog').showModal();
+}
+$('share-cancel').addEventListener('click', () => $('share-dialog').close());
+$('share-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  if ($('share-settings').hidden) return;
+  const f = ev.target.elements;
+  const { space, path, name } = shareTarget;
+  try {
+    const res = await api('POST', '/api/links', { json: { space, path, expires_in_hours: Number(f.hours.value), password: f.password.value } });
+    f.password.value = '';
+    $('share-url').value = res.url;
+    $('share-settings').hidden = true;
+    $('share-result').hidden = false;
+    $('share-submit').hidden = true;
+    $('share-copy').hidden = false;
+    track(t('op.share', { name })).done();
+    $('share-url').focus();
+    $('share-url').select();
+  } catch (e) { notify(describe(e)); }
+});
+$('share-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('share-url').value);
+    notify(t('share.copied'), 'ok');
+  } catch (e) {
+    $('share-url').select();
+    notify(t('share.copy_manual'));
+  }
+});
+
+async function openLinks() {
+  const all = state.user.admin && $('links-all').checked;
+  let links;
+  try { links = await api('GET', '/api/links' + (all ? '?all=1' : '')); } catch (e) { notify(describe(e)); return; }
+  show('links-view');
+  $('links-all-label').hidden = !state.user.admin;
+  $('links-owner-col').hidden = !all;
+  const body = $('links-entries');
+  body.replaceChildren();
+  for (const link of links) {
+    const item = el('span', { className: 'name' }, icon(link.directory ? 'folder' : fileIcon(link.path)), where(link.space, link.path));
+    if (link.has_password) item.append(el('span', { className: 'badge', tip: t('links.protected') }, icon('lock')));
+    const parent = link.path.includes('/') ? link.path.slice(0, link.path.lastIndexOf('/')) : '.';
+    const actions = el('span', { className: 'row-actions' });
+    if (link.available && spaceInfo(link.space) && can(PERM.list, link.space)) {
+      actions.append(iconButton('folder', t('search.show_in_folder'), () => { const h = hashFor(link.space, parent); if (location.hash === h) enter(); else location.hash = h; }));
+    }
+    actions.append(iconButton('link-off', t('links.revoke'), () => revokeLink(link), 'danger'));
+    body.append(el('tr', {},
+      el('td', {}, item),
+      all ? el('td', { text: link.owner_name || '—' }) : null,
+      el('td', { text: fmtTime(link.expires) }),
+      el('td', {}, el('span', { className: 'status ' + (link.available ? 'ok' : 'gone'), text: t(link.available ? 'links.active' : 'links.unavailable') })),
+      el('td', { className: 'num' }, actions)));
+  }
+  $('links-empty').hidden = links.length > 0;
+}
+async function revokeLink(link) {
+  if (!await ask({ title: t('links.revoke_title'), text: t('links.revoke_text', { name: where(link.space, link.path) }), ok: t('links.revoke') })) return;
+  try {
+    await api('DELETE', '/api/links/' + encodeURIComponent(link.id));
+    track(t('op.unshare', { name: link.path })).done();
+    notify(t('links.revoked'), 'ok');
+  } catch (e) { notify(describe(e)); }
+  openLinks();
+}
+$('open-links').addEventListener('click', openLinks);
+$('links-all').addEventListener('change', openLinks);
+$('close-links').addEventListener('click', () => openFolder(state.space, state.path));
 
 // ---------- uploads ----------
 // Each file: create an upload, send chunks at the server-confirmed offset,

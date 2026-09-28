@@ -1,22 +1,12 @@
-# Copy to compose.override.yaml (Docker Compose loads it automatically).
+# Copy to compose.override.yaml (Docker Compose loads it automatically; the
+# file is git-ignored, so local paths stay out of the repository).
 # Every directory mounted under /spaces/<name> becomes a space called <name>
 # (lowercase letters, digits, . _ -). Restart the service after changes:
 #   docker compose up -d
 services:
   filedeck:
-#    volumes:
-#      # Host path (e.g. an SMB share mounted by the server) -> space "nas"
-#      - /mnt/nas/wspolne:/spaces/nas
-#      # Read-only space: browsing and downloading only
-#      - /srv/archiwum:/spaces/archiwum:ro
-
     volumes:
-      - docker_dev:/srv/docker_dev   
-    
-volumes:
-  docker_dev:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /home/buzsys/github
+      # Host path (e.g. an SMB share mounted by the server) -> space "nas"
+      - /mnt/nas/wspolne:/spaces/nas
+      # Read-only space: browsing and downloading only
+      - /srv/archiwum:/spaces/archiwum:ro

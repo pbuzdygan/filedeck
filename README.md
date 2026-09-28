@@ -1,100 +1,116 @@
 # Filedeck
 
-Przeglądarka plików przez WWW, napisana od nowa jako następca File Browser — z kontraktami i testami wynikającymi z analizy jego podatności. Obecny etap: interfejs WWW, konta z odwoływalnymi sesjami, wiele przestrzeni (własna „Moje pliki” i katalogi z hosta), uprawnienia per przestrzeń, listowanie, pobieranie, tworzenie folderów, wznawialny upload (także przeciągnięciem na okno lub folder), podgląd zdjęć, wideo, audio, PDF i tekstu, edytor plików tekstowych z kontrolą wersji, kopiowanie i przenoszenie między przestrzeniami (także wielu zaznaczonych pozycji), wysyłanie całych folderów, zmiana nazwy, kosz, powiadomienia z historią ostatnich operacji, motyw jasny/ciemny oraz interfejs po angielsku (domyślnie) i polsku. Głównym środowiskiem jest Docker. Model bezpieczeństwa względem 62 advisory File Browser: [SECURITY.md](docs/SECURITY.md). Lista zmian: [CHANGELOG.md](CHANGELOG.md).
+A web file browser written from scratch as a successor to File Browser — with contracts and tests derived from an analysis of its vulnerabilities. Current features: web interface, accounts with revocable sessions, multiple spaces (the own "My files" space and host directories), per-space permissions, listing, downloading, creating folders, resumable uploads (also by dragging onto the window or a folder), preview of images, video, audio, PDF and text, a text editor with version control, copy and move between spaces (also for multiple selected items), whole-folder uploads, rename, trash, public links to files and folders (with an expiry date and an optional password), notifications with a history of recent operations, light/dark theme, and an interface in English (default) and Polish. Docker is the primary environment. Security model against File Browser's 62 advisories: [SECURITY.md](docs/SECURITY.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 
-Polecenia `list`, `read` i `put` działają z uprawnieniami operatora systemu i nie są granicą uwierzytelniania użytkowników sieciowych — tę rolę pełni wyłącznie `serve`.
+The `list`, `read` and `put` commands run with the operating-system operator's privileges and are not an authentication boundary for network users — only `serve` plays that role.
 
 ## Docker Compose
 
-Wymagania: Docker z Compose v2, host Linux z kernelem co najmniej 5.8.
+Requirements: Docker with Compose v2, a Linux host with kernel 5.8 or newer.
 
 ```sh
 docker compose up -d --build
-docker compose logs filedeck      # adres, odcisk SHA-256 certyfikatu i kod konfiguracyjny
+docker compose logs filedeck      # address, SHA-256 certificate fingerprint and setup code
 ```
 
-Otwórz **https://localhost:8443** (koniecznie `https://`) i przy pierwszym uruchomieniu wpisz jednorazowy **kod konfiguracyjny** z logów, nazwę i hasło administratora. Kod jest losowy, zmienia się przy każdym starcie i przestaje działać po utworzeniu administratora. Alternatywnie, przy zatrzymanej usłudze: `printf '%s\n' 'haslo' | docker compose run --rm -T filedeck bootstrap admin`.
+Open **https://localhost:8443** (`https://` is required) and, on the first start, enter the one-time **setup code** from the log together with the administrator's name and password. The code is random, changes on every start and stops working once an administrator exists. Alternatively, with the service stopped: `printf '%s\n' 'password' | docker compose run --rm -T filedeck bootstrap admin`.
 
-Dostęp z innych komputerów w sieci wymaga pliku `.env` — patrz „Ustawienia” niżej; bez niego port słucha tylko na `127.0.0.1` hosta i przeglądarka z innego komputera dostanie „odmowa połączenia”. Domyślnie Filedeck używa certyfikatu self-signed generowanego w state (przeglądarka pokaże ostrzeżenie — porównaj odcisk z logiem) i słucha tylko na `127.0.0.1` hosta. Dane: wolumen `filedeck-data` (`/data/state` — konta, sesje, certyfikat, rejestr uploadów i kosza) oraz wolumen `filedeck-files` (`/files/own` — przestrzeń „Moje pliki”). Kolejnych użytkowników i ich uprawnienia do przestrzeni ustawia administrator w interfejsie („Użytkownicy”).
+Access from other computers on the network needs an `.env` file — see "Settings" below; without it the port listens only on the host's `127.0.0.1` and a browser on another computer gets "connection refused". By default Filedeck uses a self-signed certificate generated in the state directory (the browser shows a warning — compare the fingerprint with the log). Data: volume `filedeck-data` (`/data/state` — accounts, sessions, certificate, upload and trash registry) and volume `filedeck-files` (`/files/own` — the "My files" space). The administrator adds further users and their space permissions in the interface ("Users").
 
-Kontener działa jako UID 65532, z systemem plików tylko do odczytu, bez capabilities i z `no-new-privileges`. Jego stan (sesje, uploady w toku, certyfikat) przetrwa `docker compose down`/`up`; `down -v` usuwa wolumen z danymi.
+The container runs as UID 65532, with a read-only filesystem, no capabilities and `no-new-privileges`. Its state (sessions, uploads in progress, certificate) survives `docker compose down`/`up`; `down -v` removes the data volume.
 
-### Zarządzanie
+### Management
 
-| Zadanie | Polecenie |
+| Task | Command |
 |---|---|
-| Reset hasła (np. zapomniane hasło administratora) | `docker compose stop` → `printf '%s\n' 'nowe-haslo' \| docker compose run --rm -T filedeck reset-password admin` → `docker compose start` |
-| Aktualizacja po zmianach kodu | `docker compose build && docker compose up -d` |
-| Podgląd logów (m.in. wykryte przestrzenie) | `docker compose logs -f filedeck` |
-| Stan zdrowia | `docker compose ps` (kolumna STATUS: `healthy`) |
+| Reset a password (e.g. a forgotten administrator password) | `docker compose stop` → `printf '%s\n' 'new-password' \| docker compose run --rm -T filedeck reset-password admin` → `docker compose start` |
+| Update after code changes | `docker compose build && docker compose up -d` |
+| Update from a released image (`FILEDECK_IMAGE` in `.env`) | `docker compose pull && docker compose up -d` |
+| View logs (including detected spaces) | `docker compose logs -f filedeck` |
+| Health | `docker compose ps` (STATUS column: `healthy`) |
 
-Polecenia kont wymagają zatrzymanej usługi — działająca instancja blokuje state. Bez aktywnego administratora usługa startuje w trybie konfiguracji (kod w logach).
+Account commands require a stopped service — a running instance locks the state. Without an active administrator the service starts in setup mode (code in the log).
 
-### Ustawienia
+### Released images
 
-Skopiuj `.env.example` do `.env`. Najważniejsze:
+The image is built and published to `ghcr.io/pbuzdygan/filedeck` **only when a release is published on GitHub** (`.github/workflows/release.yml`). The branches have separate channels that never mix:
 
-- `FILEDECK_ORIGIN` — dokładnie ten adres, który wpisujesz w przeglądarce (inny `Host` daje 421). Dostęp z sieci lokalnej: `FILEDECK_BIND=0.0.0.0` i `FILEDECK_ORIGIN=https://<IP-lub-nazwa-serwera>:8443`; certyfikat zostanie wygenerowany dla tej nazwy.
-- `FILEDECK_FILE_MODE` / `FILEDECK_DIR_MODE` — tryb plików i folderów tworzonych przez Filedeck (domyślnie `0640`/`0750`, czyli odczyt dla grupy). Na montowaniach SMB tryb wynika z opcji montowania i te ustawienia nie mają wpływu.
-- `FILEDECK_USER` — UID:GID procesu (domyślnie `65532:65532`), patrz niżej.
+| Branch | Release tag = image tag | Moving tag |
+|---|---|---|
+| `main` (production) | `X.Y.Z`, e.g. `1.0.0` | `latest` |
+| `dev` | `devX.Y.Z`, e.g. `dev0.9.0` | `dev_latest` |
 
-### Katalogi z hosta (przestrzenie)
+Images are multi-platform: `linux/amd64` and `linux/arm64` (Docker picks the right one).
 
-Serwer sam montuje udziały (SMB/NFS, dyski) w swoich ścieżkach; Filedeck dostaje je jako katalogi. Każdy katalog zamontowany w kontenerze pod `/spaces/<nazwa>` staje się przestrzenią o tej nazwie (małe litery, cyfry, `. _ -`). Skopiuj `compose.override.example.yaml` do `compose.override.yaml` — Compose wczyta go automatycznie, a `compose.yaml` zostaje nietknięty przy aktualizacjach:
+The workflow rejects a release if the tag has any other format, if the tagged commit is not on the channel's branch (e.g. `1.0.0` on a commit that exists only on `dev`), or if a `main` release is marked as a pre-release. It runs the tests before building. A published version is never overwritten, and `latest`/`dev_latest` move only for the highest version of the channel (a fix to an older version gets only its own number). The image carries a provenance attestation and an SBOM.
+
+Releasing: GitHub → Releases → *Draft a new release* → a new tag (`1.0.0` targeting `main`, or `dev0.9.0` targeting `dev`, preferably as a pre-release) → *Publish release*. To use an image instead of a local build, set `FILEDECK_IMAGE=ghcr.io/pbuzdygan/filedeck:latest` in `.env` (or a specific version such as `:1.0.0`, or `:dev_latest`), then run `docker compose pull && docker compose up -d`. A private package needs `docker login ghcr.io` first.
+
+### Settings
+
+Copy `.env.example` to `.env`. The most important ones:
+
+- `FILEDECK_ORIGIN` — exactly the address you type in the browser (a different `Host` gets 421). For access from the local network: `FILEDECK_BIND=0.0.0.0` and `FILEDECK_ORIGIN=https://<server-IP-or-name>:8443`; the certificate is generated for that name.
+- `FILEDECK_FILE_MODE` / `FILEDECK_DIR_MODE` — mode of files and folders created by Filedeck (default `0640`/`0750`, i.e. readable by the group). On SMB mounts the mode comes from the mount options and these settings have no effect.
+- `FILEDECK_USER` — UID:GID of the process (default `65532:65532`), see below.
+
+### Host directories (spaces)
+
+The server mounts shares (SMB/NFS, disks) at its own paths; Filedeck receives them as directories. Every directory mounted in the container under `/spaces/<name>` becomes a space with that name (lowercase letters, digits, `. _ -`). Copy `compose.override.example.yaml` to `compose.override.yaml` — Compose loads it automatically, it is git-ignored, and `compose.yaml` stays untouched on updates:
 
 ```yaml
 services:
   filedeck:
     volumes:
-      - /mnt/nas/wspolne:/spaces/nas          # przestrzeń „nas”
-      - /srv/archiwum:/spaces/archiwum:ro     # tylko przeglądanie i pobieranie
+      - /mnt/nas/shared:/spaces/nas          # space "nas"
+      - /srv/archive:/spaces/archive:ro      # browsing and downloading only
 ```
 
-Po `docker compose up -d` log pokaże `Space "nas": read-write`. Następnie administrator nadaje użytkownikom uprawnienia do przestrzeni w panelu „Użytkownicy” (nowa przestrzeń nie jest nikomu udostępniona automatycznie, poza grantem „wszystkie”).
+After `docker compose up -d` the log shows `Space "nas": read-write`. The administrator then grants users permissions for the space in the "Users" panel (a new space is not shared with anyone automatically, except through an "all spaces" grant).
 
-- **Prawa zapisu.** Proces w kontenerze (`FILEDECK_USER`) musi móc pisać w katalogu, inaczej przestrzeń będzie tylko do odczytu (znacznik w interfejsie). Dla udziału SMB ustaw ten sam UID/GID w opcjach montowania (`uid=`, `gid=`) albo `FILEDECK_USER` na właściciela katalogu. Przy pierwszym starcie Filedeck sam tworzy `/data/state` (`0700`) i `/files/own` (`0750`) jako użytkownik `FILEDECK_USER` — w obrazie są tylko puste punkty montowania z bitem sticky (jak `/tmp`). Jeśli zmienisz `FILEDECK_USER` przy **istniejących** danych, zmień ich właściciela jednorazowo przy zatrzymanej usłudze: `docker run --rm -v filedeck_filedeck-data:/data -v filedeck_filedeck-files:/files busybox chown -R 1001:1001 /data/state /files/own` (obraz Filedeck nie ma powłoki).
-- **Katalog `.filedeck`.** W każdej zapisywalnej przestrzeni Filedeck tworzy ukryty katalog `.filedeck` (tryb `0700`) na pliki w trakcie uploadu i kosz — muszą leżeć na tym samym systemie plików, żeby publikacja i przenoszenie do kosza były atomowe. Filedeck go nie pokazuje i nie pozwala do niego wejść; użytkownicy SMB mogą go widzieć — warto go wykluczyć z ich widoku (np. `veto files = /.filedeck/` w Samba).
-- **Kosz** każdej przestrzeni jest w jej `.filedeck/trash`; elementy są trwale usuwane po 30 dniach albo ręcznie przez administratora.
-- **Sprawdzenie udziału przed użyciem:** `docker compose run --rm filedeck selftest /spaces/<nazwa>` wykonuje na podmontowanym katalogu wszystkie operacje, na których Filedeck polega (publikacja bez nadpisywania, zmiana nazwy, kosz, zapis edytora z kontrolą wersji, kopiowanie, wyszukiwanie, ukrywanie `.filedeck` łącznie z wariantami wielkości liter), w tymczasowym folderze `filedeck-selftest-*`, który potem usuwa. Wypisuje PASS/FAIL i tryby nowych plików; kod wyjścia ≠ 0 oznacza, że katalogu nie należy używać do zapisu. Nie potrzebuje state, więc działa obok uruchomionej usługi.
-- **Wymagania systemu plików:** `renameat2(RENAME_NOREPLACE)` (lokalne dyski, CIFS/SMB; NFS go nie obsługuje — publikacja zwróci błąd zamiast ryzykować nadpisanie). Wsparcie konkretnych serwerów SMB/NFS nie było jeszcze testowane.
+- **Write access.** The process in the container (`FILEDECK_USER`) must be able to write the directory, otherwise the space is read-only (marked in the interface). For an SMB share set the same UID/GID in the mount options (`uid=`, `gid=`), or set `FILEDECK_USER` to the directory's owner. On the first start Filedeck itself creates `/data/state` (`0700`) and `/files/own` (`0750`) as the `FILEDECK_USER` user — the image contains only empty mount points with the sticky bit (like `/tmp`). If you change `FILEDECK_USER` with **existing** data, change its owner once with the service stopped: `docker run --rm -v filedeck_filedeck-data:/data -v filedeck_filedeck-files:/files busybox chown -R 1001:1001 /data/state /files/own` (the Filedeck image has no shell).
+- **The `.filedeck` directory.** In every writable space Filedeck creates a hidden `.filedeck` directory (mode `0700`) for files being uploaded and for the trash — they must be on the same filesystem so that publication and moving to the trash are atomic. Filedeck never shows it and does not allow entering it; SMB users may see it — consider hiding it from them (e.g. `veto files = /.filedeck/` in Samba).
+- **The trash** of each space is in its `.filedeck/trash`; items are deleted permanently after 30 days or manually by an administrator.
+- **Checking a share before use:** `docker compose run --rm filedeck selftest /spaces/<name>` performs, on the mounted directory, every operation Filedeck relies on (publication without overwriting, rename, trash, editor save with version check, copy, search, hiding `.filedeck` including case variants), inside a temporary `filedeck-selftest-*` folder that it removes afterwards. It prints PASS/FAIL and the modes of new files; a non-zero exit code means the directory must not be used for writing. It does not need the state directory, so it runs next to a running service.
+- **Filesystem requirements:** `renameat2(RENAME_NOREPLACE)` (local disks, CIFS/SMB; NFS does not support it — publication returns an error instead of risking an overwrite). Support for specific SMB/NFS servers has not been tested yet.
 
-### Za reverse proxy (produkcja)
+### Behind a reverse proxy (production)
 
-Proxy (Caddy, Traefik, nginx) terminuje TLS z prawdziwym certyfikatem i łączy się z kontenerem po HTTP w sieci Dockera:
+The proxy (Caddy, Traefik, nginx) terminates TLS with a real certificate and connects to the container over HTTP on the Docker network:
 
 ```sh
 FILEDECK_TLS_SELF_SIGNED=false
-FILEDECK_PROXY_CIDR=172.30.0.0/16     # podsieć, z której łączy się proxy
+FILEDECK_PROXY_CIDR=172.30.0.0/16     # subnet the proxy connects from
 FILEDECK_ORIGIN=https://files.example.org
 ```
 
-Połączenia spoza `FILEDECK_PROXY_CIDR` są odrzucane, a nagłówki `X-Forwarded-*` ignorowane (tożsamość pochodzi tylko z sesji). Proxy musi przekazywać oryginalny nagłówek `Host`. Port kontenera nie powinien być wtedy publikowany na hoście.
+The address of public links is built from `FILEDECK_ORIGIN` — set it to the address under which recipients of links can reach Filedeck. Connections from outside `FILEDECK_PROXY_CIDR` are rejected and `X-Forwarded-*` headers are ignored (identity comes only from the session). The proxy must pass the original `Host` header. The container port should not be published on the host in that case.
 
-Wszystkie flagi CLI mają odpowiednik `FILEDECK_<NAZWA>` (np. `FILEDECK_TLS_CERT`, `FILEDECK_TLS_KEY` dla własnego certyfikatu); flaga ma pierwszeństwo przed zmienną.
+Every CLI flag has a `FILEDECK_<NAME>` equivalent (e.g. `FILEDECK_TLS_CERT`, `FILEDECK_TLS_KEY` for your own certificate); a flag takes precedence over the variable.
 
-## Uruchomienie bez Dockera (development)
+## Running without Docker (development)
 
-Wymagania: Linux z `openat2` i `statx(STATX_MNT_ID)` (kernel co najmniej 5.8), dostępny `/proc/self/fd`, Go 1.27.1. Docelowy filesystem musi obsługiwać `renameat2(RENAME_NOREPLACE)`, `flock` i synchronizację katalogów. Brak wymaganych mechanizmów powoduje błąd, bez mniej bezpiecznego fallbacku.
+Requirements: Linux with `openat2` and `statx(STATX_MNT_ID)` (kernel 5.8 or newer), an accessible `/proc/self/fd`, Go 1.27.1. The target filesystem must support `renameat2(RENAME_NOREPLACE)`, `flock` and directory sync. If a required mechanism is missing, Filedeck fails instead of falling back to something less safe.
 
-Z katalogu `filedeck`:
+From the repository root:
 
 ```sh
 go build -o bin/filedeck ./cmd/filedeck
 mkdir -p demo/files demo/state
 chmod 700 demo/state
-printf 'Pierwszy plik Filedeck\n' > demo/source.txt
+printf 'First Filedeck file\n' > demo/source.txt
 ./bin/filedeck -root demo/files -state demo/state put demo/source.txt hello.txt
 ./bin/filedeck -root demo/files -state demo/state list
 ./bin/filedeck -root demo/files -state demo/state read hello.txt
 ```
 
-Dodatkowe przestrzenie: `-spaces-dir DIR` (każdy podkatalog to przestrzeń), a `-space NAZWA` wybiera przestrzeń dla `list`/`read`/`put`. State musi leżeć poza wszystkimi przestrzeniami.
+Additional spaces: `-spaces-dir DIR` (every subdirectory is a space), and `-space NAME` selects the space for `list`/`read`/`put`. The state directory must be outside all spaces.
 
-Ponowny upload do `hello.txt` zwróci konflikt, zachowując poprzednią zawartość. Zagnieżdżone cele są obsługiwane, jeżeli katalog nadrzędny już istnieje. Ścieżki względem przestrzeni używają `/`; `.` oznacza katalog główny wyłącznie przy listowaniu.
+Uploading to `hello.txt` again returns a conflict and keeps the previous content. Nested targets work if the parent directory already exists. Paths relative to a space use `/`; `.` means the root, for listing only.
 
-## Serwer i API
+## Server and API
 
-Pierwszego administratora tworzy się wyłącznie lokalnie; API nie ma otwartej rejestracji ani logowania na podstawie nagłówka. Hasło (min. 12 znaków) jest czytane z terminala lub stdin. Polecenia kont wymagają zatrzymanego serwera (blokada state).
+The first administrator is created locally only; the API has no open registration and no header-based login. The password (min. 12 characters) is read from the terminal or stdin. Account commands require a stopped server (state lock).
 
 ```sh
 ./bin/filedeck -root demo/files -state demo/state bootstrap admin
@@ -102,59 +118,62 @@ Pierwszego administratora tworzy się wyłącznie lokalnie; API nie ma otwartej 
   -listen 127.0.0.1:8080 -origin http://127.0.0.1:8080 -insecure-local serve
 ```
 
-Interfejs WWW jest pod `-origin`. `-insecure-local` dopuszcza HTTP tylko na adresie loopback, do developmentu. Poza nim wymagane jest `-origin https://…` oraz TLS (`-tls-cert`/`-tls-key` albo `-tls-self-signed`) lub jawny `-proxy-cidr` reverse proxy terminującego TLS. Nagłówki `X-Forwarded-*` są ignorowane, więc limit logowania za proxy jest wspólny dla adresu proxy. `-origin` musi dokładnie odpowiadać adresowi w przeglądarce; inny `Host` daje 421.
+The web interface is at `-origin`. `-insecure-local` allows HTTP on a loopback address only, for development. Otherwise `-origin https://…` is required, plus TLS (`-tls-cert`/`-tls-key` or `-tls-self-signed`) or an explicit `-proxy-cidr` of a reverse proxy terminating TLS. `X-Forwarded-*` headers are ignored, so behind a proxy the login limit is shared by the proxy's address. `-origin` must match the browser address exactly; a different `Host` gets 421.
 
-| Metoda i ścieżka | Opis |
+| Method and path | Description |
 |---|---|
-| `POST /api/auth/login` | `{"username","password"}` → cookie sesji i token `csrf` |
-| `GET /api/auth/me`, `POST /api/auth/logout` | bieżąca sesja z tokenem `csrf` i limitami uploadu, wylogowanie |
-| `POST /api/auth/password` | zmiana hasła, unieważnia wszystkie sesje konta |
-| `GET /api/spaces` | przestrzenie użytkownika z jego uprawnieniami (administrator widzi wszystkie) |
-| `GET /api/files?space=&path=` | listowanie (`.` lub brak = katalog główny przestrzeni) |
-| `POST /api/folders` | `{"space","path"}` — nowy folder w istniejącym katalogu, bez nadpisywania |
-| `POST /api/rename` | `{"space","from","to"}` — zmiana nazwy/przeniesienie w obrębie przestrzeni, bez nadpisywania |
-| `GET /api/search?space=&path=&q=` | wyszukiwanie po nazwie poniżej folderu (bez rozróżniania wielkości liter), maks. 500 wyników, 200 000 przejrzanych wpisów, 10 s — `truncated: true` przy limicie |
-| `GET /api/preview?space=&path=` | podgląd inline tylko dla listy typów (obrazy, wideo, audio, PDF), `nosniff`, CSP `sandbox` |
-| `GET`/`PUT /api/text` | edytor: `{"content","version"}`; zapis z `version` zastępuje plik tylko w tej wersji (409 `changed`), pusta `version` tworzy nowy plik; limit 2 MiB UTF-8 |
-| `POST /api/transfers`, `GET /api/transfers[/{id}]`, `DELETE /api/transfers/{id}` | kopiowanie/przenoszenie w tle: `{"kind":"copy"\|"move","from":{space,path},"to":{space,path}}` albo `"items":[{from,to},…]` (do 1000, po kolei, pierwszy błąd zatrzymuje), postęp, anulowanie |
-| `POST /api/trash`, `GET /api/trash?space=` | przeniesienie do kosza, zawartość kosza |
-| `POST /api/trash/{id}/restore`, `DELETE /api/trash/{id}` | przywrócenie (`{"path"}`, pusta = oryginalna), trwałe usunięcie — tylko administrator |
-| `GET /api/content?space=&path=` | pobieranie jako załącznik, pojedynczy `Range` |
-| `POST /api/uploads` | `{"space","path","size"}` → ID uploadu |
-| `PATCH /api/uploads/{id}` | fragment `application/octet-stream`, nagłówek `Upload-Offset` |
-| `GET`/`DELETE /api/uploads/{id}`, `POST /api/uploads/{id}/commit` | status (`state`, zatwierdzony `offset`), anulowanie, publikacja — ponowienie commitu zwraca zapisany wynik |
-| `GET`/`POST /api/users`, `PUT /api/users/{id}`, `POST /api/users/{id}/password` | administracja; zmiany wymagają `reauth_password` |
+| `POST /api/auth/login` | `{"username","password"}` → session cookie and `csrf` token |
+| `GET /api/auth/me`, `POST /api/auth/logout` | current session with the `csrf` token and upload limits, logout |
+| `POST /api/auth/password` | change password, revokes all sessions of the account |
+| `GET /api/spaces` | the user's spaces with their permissions (an administrator sees all) |
+| `GET /api/files?space=&path=` | listing (`.` or missing = root of the space) |
+| `POST /api/folders` | `{"space","path"}` — new folder in an existing directory, never overwrites |
+| `POST /api/rename` | `{"space","from","to"}` — rename/move within a space, never overwrites |
+| `GET /api/search?space=&path=&q=` | search by name below a folder (case-insensitive), max. 500 results, 200,000 scanned entries, 10 s — `truncated: true` when a limit is reached |
+| `GET /api/preview?space=&path=` | inline preview for a fixed list of types only (images, video, audio, PDF), `nosniff`, CSP `sandbox` |
+| `GET`/`PUT /api/text` | editor: `{"content","version"}`; saving with `version` replaces the file only in that version (409 `changed`), an empty `version` creates a new file; limit 2 MiB UTF-8 |
+| `POST /api/transfers`, `GET /api/transfers[/{id}]`, `DELETE /api/transfers/{id}` | background copy/move: `{"kind":"copy"\|"move","from":{space,path},"to":{space,path}}` or `"items":[{from,to},…]` (up to 1000, one after another, the first error stops), progress, cancellation |
+| `POST /api/trash`, `GET /api/trash?space=` | move to trash, trash contents |
+| `POST /api/trash/{id}/restore`, `DELETE /api/trash/{id}` | restore (`{"path"}`, empty = original), permanent deletion — administrators only |
+| `GET /api/content?space=&path=` | download as an attachment, single `Range` |
+| `POST /api/uploads` | `{"space","path","size"}` → upload ID |
+| `PATCH /api/uploads/{id}` | `application/octet-stream` chunk, `Upload-Offset` header |
+| `GET`/`DELETE /api/uploads/{id}`, `POST /api/uploads/{id}/commit` | status (`state`, confirmed `offset`), cancellation, publication — a repeated commit returns the stored result |
+| `GET`/`POST /api/users`, `PUT /api/users/{id}`, `POST /api/users/{id}/password` | administration; changes require `reauth_password` |
+| `POST /api/links` | `{"space","path","expires_in_hours","password"}` → `url` of the public link (shown only once) |
+| `GET /api/links[?all=1]`, `DELETE /api/links/{id}` | own links with their `available` state (administrator: all), revocation |
+| `GET /s/{token}`, `GET /api/public/{token}[/files?path=\|/content?path=]`, `POST /api/public/{token}/unlock` | link page and API without signing in: information, folder listing, download, unlocking with a password |
 
-Każde żądanie inne niż GET/HEAD wymaga nagłówka `Origin` równego `-origin` oraz `X-CSRF-Token` z odpowiedzi logowania. Uprawnienia to maska bitowa per przestrzeń (`"spaces": {"files": 15, "*": 3}`; `*` = wszystkie przestrzenie): 1 listowanie, 2 odczyt, 4 tworzenie (upload, foldery), 8 zmiany (zmiana nazwy, kosz, przywracanie).
+Every request other than GET/HEAD requires an `Origin` header equal to `-origin` and the `X-CSRF-Token` from the login response. Permissions are a per-space bit mask (`"spaces": {"files": 15, "*": 3}`; `*` = all spaces): 1 list, 2 read, 4 create (upload, folders), 8 modify (rename, trash, restore).
 
-Upload przetrwa restart, a nawet awarię serwera: po utracie odpowiedzi lub połączenia klient pyta `GET /api/uploads/{id}` o zatwierdzony `offset` i wysyła dalej od tego miejsca. Jeśli odpowiedź na commit zginęła, klient ponawia commit albo sprawdza status (`state: "published"`) — przez 24 h dostanie ten sam wynik, bez ryzyka drugiej publikacji. Sesje też są trwałe, więc cookie działa po restarcie.
+An upload survives a restart and even a server crash: after a lost response or connection the client asks `GET /api/uploads/{id}` for the confirmed `offset` and continues from there. If the commit response was lost, the client repeats the commit or checks the status (`state: "published"`) — for 24 h it gets the same result, with no risk of a second publication. Sessions are persistent too, so the cookie keeps working after a restart.
 
-## Zaimplementowane kontrakty
+## Implemented contracts
 
-- Interfejs WWW osadzony w binarce: tylko zasoby z własnego origin, bez skryptów i stylów inline, Trusted Types (żadnego `innerHTML`), nazwy plików wstawiane jako tekst, token CSRF wyłącznie w pamięci, pliki zawsze pobierane jako załącznik.
+- Web interface embedded in the binary: only same-origin resources, no inline scripts or styles, Trusted Types (no `innerHTML`), file names inserted as text, CSRF token kept only in memory, files always downloaded as attachments.
 
-- Dostęp do przestrzeni przez uchwyty, z odrzuceniem traversal, symlinków i przechodzenia do zagnieżdżonych mountów.
-- Odczyt tylko zwykłych plików; sprawdzenie typu przez `O_PATH` przed otwarciem danych. Listowanie pomija symlinki i pliki specjalne, limituje liczbę przetwarzanych wpisów.
-- Niezależne prawa listowania, odczytu, tworzenia i zmian, nadawane per przestrzeń; domyślna odmowa. Właściciel uploadu jest sprawdzany przy każdej operacji na nim.
-- Ukryty katalog `.filedeck` każdej przestrzeni jest nieosiągalny także przez aliasy nazw (wielkość liter, końcowe kropki/spacje, inna nazwa tego samego katalogu — porównanie urządzenia i inode). Przestrzeń tylko do odczytu jest wykrywana automatycznie.
-- Zmiana nazwy, kosz i przywracanie przez `renameat2(RENAME_NOREPLACE)` — nigdy nie nadpisują; trwałe usuwanie tylko z kosza, bez podążania za symlinkami i bez przekraczania montowań.
-- Prywatny staging, limit pliku, fragmentu, zarezerwowanych bajtów oraz liczby uploadów globalnie i na użytkownika.
-- Serializacja kontroli offsetu i zapisu fragmentu; rollback po błędzie, przekroczeniu limitu lub anulowaniu.
-- Powtórna kontrola praw, kompletności i rozmiaru przed publikacją. Atomowe utworzenie nowej nazwy bez nadpisywania istniejącego pliku, katalogu lub symlinku.
-- Cleanup usuwa wyłącznie własny plik staging. Błąd potwierdzenia trwałości po publikacji jest odróżniony od braku publikacji.
-- Trwałe rekordy uploadów: offset zapisywany po fsync danych, dwuetapowa publikacja rozstrzygana po restarcie przez obecność pliku staging, idempotentny commit z wynikiem przechowywanym 24 h. Wygaśnięcie i anulowanie usuwają staging i rekord; pliki staging bez rekordu są usuwane przy starcie.
+- Access to spaces through handles, rejecting traversal, symlinks and crossing into nested mounts.
+- Only regular files are read; the type is checked through `O_PATH` before opening the data. Listing skips symlinks and special files and limits the number of processed entries.
+- Independent list, read, create and modify permissions, granted per space; denied by default. The owner of an upload is checked on every operation on it.
+- The hidden `.filedeck` directory of each space is unreachable also through name aliases (letter case, trailing dots/spaces, another name for the same directory — device and inode are compared). A read-only space is detected automatically.
+- Rename, trash and restore use `renameat2(RENAME_NOREPLACE)` — they never overwrite; permanent deletion only from the trash, without following symlinks and without crossing mounts.
+- Private staging, limits on file size, chunk size, reserved bytes and the number of uploads globally and per user.
+- The offset check and the chunk write are serialized; rollback after an error, a limit breach or cancellation.
+- Permissions, completeness and size are checked again before publication. A new name is created atomically without overwriting an existing file, directory or symlink.
+- Cleanup removes only its own staging file. A failure to confirm durability after publication is distinguished from a failed publication.
+- Durable upload records: the offset is written after the data is fsynced, two-phase publication is resolved after a restart by the presence of the staging file, the commit is idempotent with its result kept for 24 h. Expiry and cancellation remove the staging file and the record; staging files without a record are removed at startup.
 
-- Konta i sesje w transakcyjnej bazie bbolt w prywatnym state; hasła Argon2id; sesje losowe, przechowywane jako hash, z wygaśnięciem bezczynności (30 min) i bezwzględnym (12 h), maks. 8 na konto. Zmiana hasła, reset, blokada lub zmiana praw unieważnia wszystkie sesje konta; ostatniego aktywnego administratora nie da się zablokować ani zdegradować.
-- Cookie `__Host-` `HttpOnly`, `Secure`, `SameSite=Strict`; CSRF przez token powiązany z sesją, dokładny `Origin` i `Sec-Fetch-Site`. Limit logowań per adres i globalny, limit równoległych żądań, deadline 60 s, limity JSON i nagłówków, ścisłe parsowanie JSON i query.
-- Publikacja uploadu jest serializowana z wylogowaniem i zmianą kont: po udanym wylogowaniu lub blokadzie stare żądanie nie opublikuje pliku. Pobrania rozpoczęte wcześniej mogą się zakończyć.
+- Accounts and sessions in a transactional bbolt database in the private state directory; Argon2id passwords; random sessions stored as hashes, with idle (30 min) and absolute (12 h) expiry, max. 8 per account. A password change, reset, account disable or permission change revokes all sessions of the account; the last active administrator cannot be disabled or demoted.
+- `__Host-` cookie, `HttpOnly`, `Secure`, `SameSite=Strict`; CSRF protection through a session-bound token, an exact `Origin` and `Sec-Fetch-Site`. Login limits per address and globally, a limit on concurrent requests, a 60 s deadline (downloads keep going while data flows), JSON and header limits, strict JSON and query parsing.
+- Upload publication is serialized with logout and account changes: after a successful logout or disable, an old request cannot publish a file. Downloads started earlier may finish.
 
-Domyślnie: plik 1 GiB, fragment 8 MiB, staging 4 GiB, 32 aktywne uploady, 4 na użytkownika, ważność 1 godzina. Są to limity prototypu, do dopasowania do produktu. Wewnętrzny model pozwala na wiele fragmentów; CLI automatycznie dzieli lokalny plik.
+Defaults: file 1 GiB, chunk 8 MiB, staging 4 GiB, 32 active uploads, 4 per user, validity 1 hour. These are prototype limits, to be tuned for the product. The internal model allows many chunks; the CLI splits a local file automatically.
 
-## Tłumaczenia
+## Translations
 
-Teksty interfejsu są w `internal/web/static/lang-en.json` (domyślny, źródłowy) i `lang-pl.json`. Nowy tekst dodaje się do **obu** plików; `TestTranslations` (w `go test ./...`) sprawdza, że języki mają te same klucze i zmienne (`{name}`), a każdy klucz użyty w HTML/JS i każdy kod błędu API ma tłumaczenie. Nowy język: kolejny plik `lang-<kod>.json`, wpis w `LANGS` w `app.js` i w teście.
+Interface texts live in `internal/web/static/lang-en.json` (default, source) and `lang-pl.json`. A new text is added to **both** files; `TestTranslations` (part of `go test ./...`) checks that the languages have the same keys and placeholders (`{name}`), and that every key used in HTML/JS and every API error code has a translation. A new language: another `lang-<code>.json` file plus an entry in `LANGS` in `app.js`/`share.js` and in the test.
 
-## Testy
+## Tests
 
 ```sh
 go test -count=1 -timeout=60s ./...
@@ -163,14 +182,14 @@ go test -race -count=1 -timeout=120s ./...
 go test ./internal/storage -run='^$' -fuzz=FuzzValidPath -fuzztime=10s -parallel=2
 ```
 
-Race detector wymaga kompilatora C; bez niego można użyć obrazu `golang:1.27.1-bookworm`. Dostępne są też cele `make build`, `test`, `race`, `vet`, `fuzz` i `ui-test`.
+The race detector needs a C compiler; without one, use the `golang:1.27.1-bookworm` image. The `Makefile` also has `build`, `test`, `race`, `vet`, `fuzz` and `ui-test` targets.
 
-Test przeglądarkowy (Chromium przez Playwright w kontenerze `node`) uruchamia się na **jednorazowej** instancji z pustym wolumenem — tworzy foldery, pliki i użytkownika `jan`:
+The browser test (Chromium through Playwright, in the prebuilt Playwright image) runs against a **throwaway** instance with empty volumes — it creates folders, files, links and the user `jan`. With an instance at `https://localhost:18443` and an administrator `admin`:
 
 ```sh
-FILEDECK_PORT=18443 docker compose -p filedeck-test up -d   # po bootstrapie z -p filedeck-test
-FILEDECK_URL=https://localhost:18443 FILEDECK_PASSWORD='haslo-admina' make ui-test
-FILEDECK_PORT=18443 docker compose -p filedeck-test down -v
-``` Workflow CI przygotowano dla sytuacji, w której katalog `filedeck` jest korzeniem nowego repozytorium.
+FILEDECK_URL=https://localhost:18443 FILEDECK_ADMIN=admin FILEDECK_PASSWORD='admin-password' make ui-test
+```
 
-Szczegóły modelu bezpieczeństwa i ograniczeń: [CONTRACT.md](docs/CONTRACT.md). Stan wdrożenia i dalsze kroki: [PROGRESS.md](docs/PROGRESS.md).
+A complete recipe for the throwaway instance is in [AGENTS.md](AGENTS.md).
+
+Security model and limitations in detail: [CONTRACT.md](docs/CONTRACT.md). Status and next steps: [PROGRESS.md](docs/PROGRESS.md).

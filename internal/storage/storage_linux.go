@@ -336,6 +336,12 @@ func (s *Space) Read(name string) (*os.File, error) {
 		return nil, err
 	}
 	defer handle.Close()
+	return reopenRegular(handle, name)
+}
+
+// reopenRegular opens an O_PATH handle of a regular file for reading, bound to
+// that same object. The handle stays open and belongs to the caller.
+func reopenRegular(handle *os.File, name string) (*os.File, error) {
 	st, err := handle.Stat()
 	if err != nil {
 		return nil, err
@@ -398,14 +404,19 @@ func (s *Space) List(ctx context.Context, name string, limit int) ([]Entry, erro
 		return nil, err
 	}
 	defer f.Close()
+	return s.listDir(ctx, f, limit)
+}
+
+// listDir lists an open directory; the caller holds s.mu and checked limit.
+func (s *Space) listDir(ctx context.Context, f *os.File, limit int) ([]Entry, error) {
 	var self unix.Stat_t
-	if err = unix.Fstat(int(f.Fd()), &self); err != nil {
+	if err := unix.Fstat(int(f.Fd()), &self); err != nil {
 		return nil, err
 	}
 	entries := make([]Entry, 0)
 	scanned := 0
 	for {
-		if err = ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		batch, e := f.ReadDir(128)
@@ -417,7 +428,7 @@ func (s *Space) List(ctx context.Context, name string, limit int) ([]Entry, erro
 			// fstatat is relative to the directory capability, never an absolute path
 			// reconstructed from the original (possibly renamed) pathname.
 			var st unix.Stat_t
-			if err = unix.Fstatat(int(f.Fd()), entry.Name(), &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+			if err := unix.Fstatat(int(f.Fd()), entry.Name(), &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
 				if errors.Is(err, unix.ENOENT) {
 					continue
 				}

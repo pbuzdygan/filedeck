@@ -251,6 +251,9 @@ td.date-col { font-size: .88rem; }
 .ic-download { -webkit-mask-image: url(/assets/ti-download.svg); mask-image: url(/assets/ti-download.svg); }
 .ic-drag-drop { -webkit-mask-image: url(/assets/ti-drag-drop.svg); mask-image: url(/assets/ti-drag-drop.svg); }
 .ic-external-link { -webkit-mask-image: url(/assets/ti-external-link.svg); mask-image: url(/assets/ti-external-link.svg); }
+.ic-link { -webkit-mask-image: url(/assets/ti-link.svg); mask-image: url(/assets/ti-link.svg); }
+.ic-link-off { -webkit-mask-image: url(/assets/ti-link-off.svg); mask-image: url(/assets/ti-link-off.svg); }
+.ic-share { -webkit-mask-image: url(/assets/ti-share.svg); mask-image: url(/assets/ti-share.svg); }
 .ic-eye { -webkit-mask-image: url(/assets/ti-eye.svg); mask-image: url(/assets/ti-eye.svg); }
 .ic-file-code { -webkit-mask-image: url(/assets/ti-file-code.svg); mask-image: url(/assets/ti-file-code.svg); }
 .ic-file-plus { -webkit-mask-image: url(/assets/ti-file-plus.svg); mask-image: url(/assets/ti-file-plus.svg); }
@@ -284,3 +287,13 @@ td.date-col { font-size: .88rem; }
 .ic-users { -webkit-mask-image: url(/assets/ti-users.svg); mask-image: url(/assets/ti-users.svg); }
 .ic-x { -webkit-mask-image: url(/assets/ti-x.svg); mask-image: url(/assets/ti-x.svg); }
 .ic-search { -webkit-mask-image: url(/assets/ti-search.svg); mask-image: url(/assets/ti-search.svg); }
+
+/* ---------- public links ---------- */
+.status { display: inline-block; font-size: .8rem; padding: 2px 9px; border-radius: 999px; }
+.status.ok { background: var(--ok-soft); color: var(--ok); }
+.status.gone { background: var(--danger-soft); color: var(--danger); }
+.name .badge { margin-left: 8px; padding: 1px 6px; }
+.shared-file { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 24px 8px; }
+#file-icon { width: 48px; height: 48px; color: var(--accent); }
+.shared-file .name { font-size: 1.1rem; font-weight: 600; word-break: break-word; }
+.shared-note { margin-top: 12px; font-size: .85rem; }

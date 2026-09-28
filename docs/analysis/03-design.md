@@ -1,69 +1,69 @@
-# Filedeck — proponowany projekt bezpieczeństwa
+# Filedeck — proposed security design
 
-Status: propozycja do doprecyzowania. Potwierdzony zakres: Linux/Docker i istniejące katalogi zmieniane również przez inne aplikacje lub SMB/NFS. Pojedyncza instancja serwera to rekomendacja architektoniczna. Inni użytkownicy sieciowi i dane plików są niezaufani. Operator hosta i konfiguracja mountów są zaufani; proces lokalny zmieniający pliki może powodować wyścigi. Kompromitacja roota hosta nie mieści się w gwarancjach aplikacji.
+Status: a proposal to be refined (historical; the implemented contracts are in [CONTRACT.md](../CONTRACT.md)). Confirmed scope: Linux/Docker and existing directories also changed by other applications or SMB/NFS. A single server instance is an architectural recommendation. Other network users and file data are untrusted. The host operator and the mount configuration are trusted; a local process changing files may cause races. A compromise of the host's root is outside the application's guarantees.
 
-## Struktura
+## Structure
 
-Modularny monolit: HTTP/UI → sesje → usługi operacji → polityka dostępu i storage. Osobne moduły kont/sesji, przestrzeni, operacji plikowych, uploadów i udziałów; zadania kosztowne mają ograniczoną kolejkę. Handler nie dostaje dowolnej ścieżki hosta ani ogólnego filesystemu do bezpośredniego użycia.
+A modular monolith: HTTP/UI → sessions → operation services → access policy and storage. Separate modules for accounts/sessions, spaces, file operations, uploads and shares; expensive jobs have a bounded queue. A handler never gets an arbitrary host path or a general filesystem for direct use.
 
-Go pozostaje sensownym kandydatem, bo nowy model nie wymaga zmiany języka. Proponowane minimum infrastruktury: jeden proces, frontend jako statyczne zasoby i jedna lokalna baza metadanych; SQLite jest kandydatem do oceny, nie zatwierdzonym wyborem. Nie dodawać Redis ani wielu replik w v1. Locki procesu nie są gwarancją w przyszłym modelu wieloinstancyjnym.
+Go remains a sensible candidate, because the new model does not require changing the language. Proposed minimum infrastructure: one process, the frontend as static assets and one local metadata database; SQLite is a candidate to evaluate, not an approved choice. Do not add Redis or multiple replicas in v1. Process locks are not a guarantee in a future multi-instance model.
 
-## Granice zaufania i niezmienne reguły
+## Trust boundaries and invariants
 
-| Granica | Zasada | Weryfikacja |
+| Boundary | Rule | Verification |
 |---|---|---|
-| Przeglądarka → API | Klient nie określa właściciela, scope ani swoich praw | Modyfikacje ID, masowe przypisanie pól, obce zasoby |
-| Konto → przestrzeń | Brak przydziału oznacza odmowę; kontrola każdej operacji | Ta sama macierz praw na listing/raw/preview/search/ZIP/edit |
-| Ścieżka API → OS | Operacja pozostaje w otwartej granicy przestrzeni także przy wyścigu | Traversal, symlinki, podmiana katalogu, nazwy platformowe |
-| Dane użytkownika → HTML/parser | Plik jest niezaufany niezależnie od rozszerzenia | XSS, aktywne SVG/HTML/EPUB, duże i błędne formaty |
-| Upload → plik docelowy | Niekompletny upload nie zmienia istniejącego celu | Błąd, anulowanie, restart, konflikt, równoległy zapis |
-| Udział → odbiorca anonimowy | Uprawnienie ograniczone do udziału i jego aktualnego stanu | Obcy ID, odwołanie, wygasanie, podmiana zasobu |
-| Proxy → tożsamość | Nagłówek klienta nie staje się tożsamością | Bezpośrednie połączenie i sfałszowane forwarded headers |
+| Browser → API | The client does not determine the owner, the scope or its own permissions | Modified IDs, mass assignment of fields, foreign resources |
+| Account → space | No grant means denial; every operation is checked | The same permission matrix for listing/raw/preview/search/ZIP/edit |
+| API path → OS | The operation stays within the opened space boundary even during a race | Traversal, symlinks, directory swap, platform-specific names |
+| User data → HTML/parser | A file is untrusted regardless of its extension | XSS, active SVG/HTML/EPUB, large and malformed formats |
+| Upload → target file | An incomplete upload does not change an existing target | Error, cancellation, restart, conflict, concurrent write |
+| Share → anonymous recipient | The permission is limited to the share and its current state | Foreign ID, revocation, expiry, resource replacement |
+| Proxy → identity | A client header never becomes an identity | Direct connection and forged forwarded headers |
 
-## Dostęp do filesystemu
+## Filesystem access
 
-Używać uchwytu do katalogu i API odpornych na traversal; ocenić `os.Root` dla ustalonej wersji Go i pełnego zestawu operacji. Oficjalna dokumentacja opisuje jego ochronę i ograniczenia: [os.Root](https://pkg.go.dev/os#Root), [opis mechanizmu](https://go.dev/blog/osroot). `os.Root` dopuszcza pewne symlinki wewnątrz granicy — sam nie realizuje naszej polityki „bez symlinków” ani praw aplikacji.
+Use a directory handle and traversal-resistant APIs; evaluate `os.Root` for the chosen Go version and the full set of operations. The official documentation describes its protection and limitations: [os.Root](https://pkg.go.dev/os#Root), [description of the mechanism](https://go.dev/blog/osroot). `os.Root` allows some symlinks inside the boundary — on its own it does not implement our "no symlinks" policy or application permissions.
 
-Domyślnie nie przechodzić symlinków; jeśli w przyszłości będą potrzebne, zaprojektować ich semantykę oddzielnie. Nie wystarczy `Lstat` przed `Open`, bo to ponownie tworzy wyścig. Na Linux ocenić uchwyty i odpowiednie operacje OS; dla innych platform potrzebny osobny zestaw gwarancji i testów.
+Do not traverse symlinks by default; if they are needed in the future, design their semantics separately. `Lstat` before `Open` is not enough, because that recreates the race. On Linux evaluate handles and the appropriate OS operations; other platforms need a separate set of guarantees and tests.
 
-Obsługiwać zwykłe pliki i katalogi. FIFO, sockety i urządzenia muszą być odrzucone bez blokującego odczytu; nie wystarczy sprawdzić typu dopiero po potencjalnie blokującym Open. Hardlinki i mounty są osobnym problemem: izolacja ścieżki nie gwarantuje izolacji danych współdzielonych przez hardlink. Zaufana konfiguracja eksportowanych katalogów, uprawnień OS i mountów jest częścią modelu wdrożenia.
+Support regular files and directories. FIFOs, sockets and devices must be rejected without a blocking read; checking the type only after a potentially blocking Open is not enough. Hardlinks and mounts are a separate problem: path isolation does not guarantee isolation of data shared through a hardlink. A trusted configuration of exported directories, OS permissions and mounts is part of the deployment model.
 
-Kontrakt API powinien jednoznacznie określać dekodowanie i walidację ścieżek; odrzucać niejednoznaczne wejście, zamiast interpretować tę samą nazwę inaczej w autoryzacji, storage i ZIP. System plików, w tym case folding i Unicode, wyznacza realne kolizje nazw.
+The API contract should define path decoding and validation unambiguously; reject ambiguous input instead of interpreting the same name differently in authorization, storage and ZIP. The filesystem, including case folding and Unicode, determines real name collisions.
 
-## Sesje i tożsamość
+## Sessions and identity
 
-Losowy sekret sesji; w bazie jego hash, użytkownik, terminy ważności i stan odwołania. Cookie ustawiane przez serwer z HttpOnly, Secure i SameSite. Jawny POST logout, unieważnienie sesji przy resecie hasła i blokadzie konta. Ponowne uwierzytelnienie przy wrażliwych zmianach konta. Limit bezczynności i maksymalny czas życia egzekwuje serwer.
+A random session secret; in the database its hash, the user, validity terms and revocation state. A server-set cookie with HttpOnly, Secure and SameSite. An explicit POST logout, session invalidation on password reset and account disable. Re-authentication for sensitive account changes. The idle limit and maximum lifetime are enforced by the server.
 
-Cookie wymaga ochrony CSRF dla operacji zmieniających stan: kontrola Origin i token CSRF, brak mutacji w GET. Ograniczyć koszt logowania, wielkość wejścia, liczbę prób i równoległe kosztowne operacje hashowania; nie polegać wyłącznie na adresie IP z niezaufanego nagłówka.
+The cookie requires CSRF protection for state-changing operations: an Origin check and a CSRF token, no mutations in GET. Limit the cost of logging in, the input size, the number of attempts and parallel expensive hashing operations; do not rely only on an IP address from an untrusted header.
 
-Konto posiada stabilny identyfikator niezależny od loginu. Prywatny katalog może wynikać z ID, nigdy z potencjalnie kolidującej normalizacji nazwy użytkownika. Brak uprawnień domyślnych do wspólnego root. Rejestracja i automatyczny provisioning to osobne funkcje.
+An account has a stable identifier independent of the login name. A private directory may be derived from the ID, never from a potentially colliding normalisation of the username. No default permissions for a shared root. Registration and automatic provisioning are separate features.
 
-## Jeden model uploadu
+## One upload model
 
-Stany: utworzony → przesyłany → gotowy do zatwierdzenia → zatwierdzony; osobno anulowany/wygasły. Rekord ma właściciela, przestrzeń, cel, rozmiar, offset, termin ważności i losowy identyfikator. Zarówno prosty upload, jak i wznawianie używają tego samego modelu.
+States: created → uploading → ready to commit → committed; separately cancelled/expired. The record has the owner, space, target, size, offset, expiry and a random identifier. Both simple and resumable uploads use the same model.
 
-Najpierw walidacja i autoryzacja, później staging w prywatnym katalogu na tym samym filesystemie co cel, niedostępnym przez eksportowane API. Limit na plik, użytkownika/przestrzeń, aktywne transfery i całkowity staging. Zadeklarowany rozmiar nie zastępuje liczenia rzeczywistych bajtów.
+Validation and authorization first, then staging in a private directory on the same filesystem as the target, unreachable through the exported API. Limits per file, per user/space, on active transfers and on total staging. The declared size does not replace counting the actual bytes.
 
-Blokada uploadu obejmuje odczyt offsetu, zapis i aktualizację stanu; blokada celu rozstrzyga konkurujące zatwierdzenia. Uprawnienia sprawdzić ponownie przy finalizacji. Dla „nie nadpisuj” potrzebna jest atomowa semantyka no-replace, nie samo Exists+Rename. Zapis tymczasowy + rename może dać atomową widoczność pojedynczego pliku na obsługiwanym filesystemie; nie daje automatycznie transakcji baza+dysk ani atomowości całego drzewa.
+The upload lock covers reading the offset, the write and the state update; a target lock decides competing commits. Permissions are checked again at finalisation. "Do not overwrite" needs atomic no-replace semantics, not just Exists+Rename. A temporary write + rename can give atomic visibility of a single file on a supported filesystem; it does not automatically give a database+disk transaction or atomicity of a whole tree.
 
-Cleanup usuwa tylko należący do operacji plik staging. Restart wymaga odzyskania stanu i idempotentnego sprzątania. Cross-filesystem move to osobna operacja copy+commit+delete z możliwością częściowego wykonania. Dla SMB/NFS trzeba najpierw zweryfikować semantykę docelowego środowiska.
+Cleanup removes only the staging file owned by the operation. A restart requires state recovery and idempotent cleanup. A cross-filesystem move is a separate copy+commit+delete operation that may partially complete. For SMB/NFS the semantics of the target environment must be verified first.
 
-## Udostępnianie i zewnętrzne zmiany
+## Sharing and external changes
 
-Najtrudniejsza decyzja: co identyfikuje link? Ścieżka, konkretny obiekt czy zamrożona wersja danych?
+The hardest decision: what does a link identify? A path, a specific object or a frozen version of the data?
 
-- Dla plików zarządzanych wyłącznie przez aplikację: ID zasobu + generacja, unieważnienie udziałów po delete/replace oraz jawna polityka rename. Sama baza nie zapewnia atomowości z dyskiem; potrzebny dziennik operacji i odtwarzanie po awarii.
-- Dla dowolnych katalogów zmienianych przez SMB/inne procesy: watcher, inode i mtime nie są wystarczającym dowodem niezmienności. Bezpiecznym wariantem pierwszych publicznych linków są kopie/snapshoty w storage zarządzanym przez Filedeck, z limitami miejsca. Kopiowanie źródła zmienianego w trakcie nie gwarantuje spójnego snapshotu — to osobny warunek do rozwiązania.
-- „Żywy link do folderu” może być świadomą funkcją ujawniającą także nowe pliki. Wymaga jednoznacznej informacji w UI i osobnego modelu dostępu; nie może udawać linku do niezmiennego obiektu.
+- For files managed only by the application: a resource ID + generation, invalidation of shares after delete/replace and an explicit rename policy. The database alone does not provide atomicity with the disk; an operation log and crash recovery are needed.
+- For arbitrary directories changed over SMB/by other processes: a watcher, inode and mtime are not sufficient proof of immutability. The safe variant for the first public links is copies/snapshots in storage managed by Filedeck, with space limits. Copying a source that changes meanwhile does not guarantee a consistent snapshot — a separate condition to solve.
+- A "live folder link" can be a deliberate feature that also reveals new files. It needs clear information in the UI and a separate access model; it must not pretend to be a link to an immutable object.
 
-Link ma losowy sekret o wysokiej entropii, wygasanie i odwołanie. Hasło udziału nie powinno generować drugiego trwałego URL omijającego ochronę hasłem; po odblokowaniu krótka sesja odbiorcy. Sekrety udziałów usuwać z logów i refererów. Sprawdzać aktualny stan właściciela, udziału i praw przy każdym dostępie. Cache treści nie omija autoryzacji.
+A link has a high-entropy random secret, expiry and revocation. A share password should not generate a second persistent URL that bypasses the password protection; after unlocking, a short recipient session. Remove share secrets from logs and referrers. Check the current state of the owner, the share and the permissions on every access. A content cache does not bypass authorization.
 
-## Podglądy i limity
+## Previews and limits
 
-HTML/SVG/EPUB traktować jako aktywną treść. Najprostsza pierwsza wersja może oferować pobranie; późniejszy podgląd wymaga sandboxu lub osobnego origin bez sesji aplikacji. Markdown sanitizować, a surowy HTML ograniczyć. Lista wspieranych formatów ma wynikać z testów i potrzeby użytkownika.
+Treat HTML/SVG/EPUB as active content. The simplest first version may offer only a download; a later preview requires a sandbox or a separate origin without the application's session. Sanitize Markdown and restrict raw HTML. The list of supported formats should follow from tests and user needs.
 
-Limity dotyczą bajtów faktycznie odczytanych, rozmiaru wyjścia, pikseli po dekodowaniu, głębokości drzewa, liczby wyników, czasu i równoległości. Sam Context nie zatrzyma każdej biblioteki ani blokującego syscalla; nieprzerywalne i ryzykowne konwersje mogą wymagać osobnego procesu z limitami OS.
+Limits apply to the bytes actually read, the output size, pixels after decoding, tree depth, the number of results, time and parallelism. A Context alone will not stop every library or a blocking syscall; uninterruptible and risky conversions may need a separate process with OS limits.
 
-## Konfiguracja i eksploatacja
+## Configuration and operations
 
-Jeden jawny model konfiguracji z walidacją przed startem. Sekrety poza katalogami udostępnianymi. Start bez domyślnego publicznego konta administratora; jednorazowy bootstrap. Proces bez roota, minimalne mounty, backup metadanych i danych, log zdarzeń bez sekretów. Migracje nie importują aktywnych sesji, starych sekretów udziałów ani reguł, których nie da się odwzorować bez poszerzenia dostępu.
+One explicit configuration model with validation before startup. Secrets outside the shared directories. Startup without a default public administrator account; a one-time bootstrap. A non-root process, minimal mounts, backup of metadata and data, an event log without secrets. Migrations do not import active sessions, old share secrets or rules that cannot be mapped without broadening access.

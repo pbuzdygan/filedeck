@@ -36,10 +36,17 @@ func serve(w http.ResponseWriter, name string) {
 // Index serves the single page.
 func Index(w http.ResponseWriter, _ *http.Request) { serve(w, "index.html") }
 
+// Share serves the public link page; the token stays in the URL and is read by
+// share.js. The page is not indexed and never sends a Referer.
+func Share(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	serve(w, "share.html")
+}
+
 // Asset serves one embedded file by exact name; there are no directories.
 func Asset(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if name == "index.html" || name != path.Base(name) {
+	if name == "index.html" || name == "share.html" || name != path.Base(name) {
 		http.NotFound(w, r)
 		return
 	}

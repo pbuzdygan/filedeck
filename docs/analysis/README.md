@@ -1,34 +1,34 @@
-# Filedeck — analiza przed nową implementacją
+# Filedeck — analysis before the new implementation
 
-Stan analizy: 2026-09-28. Poniższa analiza poprzedza implementację. Powstał już [pierwszy prototyp rdzenia](06-implementation.md); jego testy i ograniczenia opisano osobno.
+Analysis status: 2026-09-28. This analysis precedes the implementation and is kept as a historical record; the current state is in [PROGRESS.md](../PROGRESS.md) and [SECURITY.md](../SECURITY.md). The [first core prototype](06-implementation.md) and its tests and limitations are described separately.
 
-## Wniosek
+## Conclusion
 
-Warto odtworzyć funkcje File Browser na nowym rdzeniu. Największą korzyść daje uproszczenie modelu dostępu, cyklu uploadu, sesji i udostępniania. Zmiana języka albo frameworka sama nie usuwa przyczyn wykrytych błędów.
+It is worth recreating File Browser's features on a new core. The biggest benefit comes from simplifying the access model, the upload lifecycle, sessions and sharing. Changing the language or framework alone does not remove the causes of the bugs found.
 
-Nowa implementacja ma zachować potrzeby użytkownika: pracę na katalogach, upload, pobieranie, edycję, wyszukiwanie, podgląd, konta i udostępnianie. Nie zakładamy zgodności starego API, bazy ani wszystkich opcji konfiguracji. Usunięcie lub odroczenie funkcji w poniższym planie to rekomendacja, nie zaakceptowana przez właściciela decyzja.
+The new implementation should keep the user's needs: working with directories, upload, download, editing, search, preview, accounts and sharing. We do not assume compatibility with the old API, database or all configuration options. Removing or deferring features in the plan below is a recommendation, not a decision accepted by the owner.
 
-## Materiał i ograniczenia
+## Material and limitations
 
-- Repo referencyjne: `../../reference`, origin `git@github.com:pbuzdygan/filebrowser.git`.
-- Badany HEAD: `833d908884d5c801f30f5c098d7977177eb3a36b`, data commita 2026-07-28, `docs: update post link`.
-- Drzewo referencyjne było czyste. `git describe --tags --always` zwraca sam hash; nie przypisujemy automatycznie numeru wydania. Nie porównano HEAD z aktualnym zdalnym masterem upstreamu.
-- Źródła: backend Go, trasy HTTP, auth, filesystem, upload, share, reguły, wybrane testy, frontend auth i edytor, manifesty zależności, Dockerfile i CI.
-- Pobrano wszystkie 62 publiczne advisory zwrócone przez API upstreamu: 5 critical, 27 high, 24 medium, 6 low. 19 nie ma wskazanej wersji poprawionej w polu `patched_versions`. **To nie oznacza 19 potwierdzonych podatności tego checkoutu**: metadane, konfiguracja i kod wymagają osobnej interpretacji.
-- Nie uruchamiano aplikacji, PoC, testów ani skanerów zależności. Potwierdzenie mechanizmu w kodzie jest odróżnione od demonstracji ataku. Nie jest to zakończony audyt bezpieczeństwa ani gwarancja kompletności.
-- Publiczne advisory nie obejmują zgłoszeń prywatnych ani nieujawnionych podatności.
+- Reference repository: `../../reference`, origin `git@github.com:pbuzdygan/filebrowser.git`.
+- Examined HEAD: `833d908884d5c801f30f5c098d7977177eb3a36b`, commit date 2026-07-28, `docs: update post link`.
+- The reference tree was clean. `git describe --tags --always` returns only the hash; we do not automatically assign a release number. HEAD was not compared with the current upstream remote master.
+- Sources: Go backend, HTTP routes, auth, filesystem, upload, share, rules, selected tests, frontend auth and editor, dependency manifests, Dockerfile and CI.
+- All 62 public advisories returned by the upstream API were downloaded: 5 critical, 27 high, 24 medium, 6 low. 19 have no fixed version in the `patched_versions` field. **This does not mean 19 confirmed vulnerabilities in this checkout**: metadata, configuration and code need separate interpretation.
+- No application, PoC, tests or dependency scanners were run. Confirming a mechanism in the code is distinguished from demonstrating an attack. This is not a completed security audit or a guarantee of completeness.
+- Public advisories do not cover private reports or undisclosed vulnerabilities.
 
-## Dokumenty
+## Documents
 
-1. [Funkcje i propozycja zakresu](01-functions.md).
-2. [Ustalenia z kodu](02-findings.md).
-3. [Architektura i model zagrożeń Filedeck](03-design.md).
-4. [Kolejność realizacji i warunki odbioru](04-roadmap.md).
-5. [Rejestr wszystkich 62 advisory](05-advisories.md).
-6. [Surowy zapis API, z opisami i metadanymi](sources/upstream-advisories.json).
+1. [Features and proposed scope](01-functions.md).
+2. [Findings from the code](02-findings.md).
+3. [Filedeck architecture and threat model](03-design.md).
+4. [Implementation order and acceptance criteria](04-roadmap.md).
+5. [Register of all 62 advisories](05-advisories.md).
+6. [Raw API record, with descriptions and metadata](sources/upstream-advisories.json).
 
-## Decyzje wpływające na dalszą implementację
+## Decisions affecting further implementation
 
-Użytkownik potwierdził: **Linux i Docker**, **istniejące katalogi zmieniane również przez inne aplikacje lub SMB/NFS**. To wymagania projektu. Trzeba jeszcze rozróżnić lokalny filesystem eksportowany przez SMB/NFS od mountu sieciowego po stronie Filedeck i ustalić testowane konfiguracje; nie deklarujemy automatycznie wsparcia zapisu na każdym SMB/NFS.
+The user confirmed: **Linux and Docker**, **existing directories also changed by other applications or SMB/NFS**. These are project requirements. We still need to distinguish a local filesystem exported over SMB/NFS from a network mount on Filedeck's side, and to decide which configurations are tested; we do not automatically declare write support on every SMB/NFS.
 
-Do ustalenia dalej: liczba użytkowników i wzajemne zaufanie; dostęp z internetu; lokalne konta czy OIDC; potrzeba anonimowych linków; maksymalne wielkości plików i katalogów; wymagania migracji. Nie blokuje to analizy mechanizmów bezpieczeństwa, ale wpływa na szczegóły kontraktów i testów.
+Still to decide: the number of users and their mutual trust; internet access; local accounts or OIDC; the need for anonymous links; maximum file and directory sizes; migration requirements. This does not block the analysis of security mechanisms, but it affects the details of contracts and tests.

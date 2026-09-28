@@ -21,7 +21,7 @@ async function newPage() {
   const page = await ctx.newPage();
   // Expected HTTP errors (401 before login, 409 conflict) are logged by the browser; ignore those.
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !m.text().startsWith('Failed to load resource')) problems.push('console: ' + m.text()); });
-  page.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
+  page.on('pageerror', (e) => { problems.push('pageerror: ' + e.message); console.log('  pageerror:', e.message); });
   page.on('dialog', async (d) => { problems.push('NATIVE DIALOG (possible XSS): ' + d.message()); await d.dismiss(); });
   return page;
 }
@@ -131,6 +131,8 @@ await row(page, 'src').locator('button.name').click();
 await row(page, 'lib').locator('button.name').click();
 await row(page, 'util.go').waitFor();
 await page.locator('#crumbs button', { hasText: 'Dokumenty' }).click();
+// Wait until the folder is shown: a search typed earlier would be cleared by the navigation.
+await row(page, 'projekt').waitFor();
 step('folder upload recreates the tree');
 
 // ---- search below the current folder, open a hit in its folder
@@ -185,7 +187,8 @@ await row(page, 'Dokumenty').waitFor();
 await dropFiles('#drop', [{ name: 'upuszczony.txt', content: 'drop' }]);
 await row(page, 'upuszczony.txt').waitFor();
 await dropFiles('#entries tr[data-folder="Zdjęcia"] td:nth-child(2)', [{ name: 'do-folderu.txt', content: 'x' }]);
-await toast(page, 'Uploaded 1 file(s)').waitFor();
+// 1 B tells this upload apart from the previous one (4 B) whose toast may still be shown.
+await toast(page, 'Uploaded 1 file(s), 1 B').waitFor();
 await row(page, 'Zdjęcia').locator('button.name').click();
 await row(page, 'do-folderu.txt').waitFor();
 step('drag & drop onto window and onto a folder');
@@ -280,9 +283,72 @@ if (hasArchive) {
   step('read-only space: badge, no write controls');
 }
 
+// ---- public links: folder with password, file without; revoke; rename ends a link
+await page.evaluate(() => { location.hash = '#/files'; });
+await page.getByPlaceholder('New folder').fill('Wspólne');
+await page.getByRole('button', { name: 'Create' }).click();
+await row(page, 'Wspólne').locator('button.name').click();
+await page.waitForFunction(() => location.hash === '#/files/Wsp%C3%B3lne' || location.hash === '#/files/Wspólne');
+await page.setInputFiles('#upload-input', [{ name: 'plan.txt', mimeType: 'text/plain', buffer: Buffer.from('plan') }]);
+await row(page, 'plan.txt').waitFor();
+async function createLink(name, password) {
+  await act(page, name, 'Share link').click();
+  const dialog = page.locator('#share-dialog');
+  await dialog.waitFor();
+  if (password) await dialog.locator('input[name=password]').fill(password);
+  await dialog.getByRole('button', { name: 'Create link' }).click();
+  await page.locator('#share-url').waitFor();
+  const url = await page.locator('#share-url').inputValue();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  return url;
+}
+const fileURL = await createLink('plan.txt', '');
+await page.locator('.crumbs a, .crumbs button').first().click();
+await row(page, 'Wspólne').waitFor();
+const folderURL = await createLink('Wspólne', 'tajne-haslo');
+if (!fileURL.includes('/s/') || fileURL === folderURL) problems.push('bad link URLs: ' + fileURL + ' ' + folderURL);
+const guest = await newPage();
+await guest.goto(folderURL);
+await guest.getByRole('heading', { name: 'This link is protected' }).waitFor();
+await guest.locator('#unlock-form input[name=password]').fill('zle-haslo-123');
+await guest.getByRole('button', { name: 'Open' }).click();
+await guest.locator('#toasts .toast', { hasText: 'Wrong password' }).waitFor();
+await guest.locator('#unlock-form input[name=password]').fill('tajne-haslo');
+await guest.getByRole('button', { name: 'Open' }).click();
+await guest.locator('#entries tr', { hasText: 'plan.txt' }).waitFor();
+const [guestDownload] = await Promise.all([guest.waitForEvent('download'), guest.locator('#entries tr', { hasText: 'plan.txt' }).getByRole('link', { name: 'Download' }).click()]);
+if (fs.readFileSync(await guestDownload.path(), 'utf8') !== 'plan') problems.push('shared folder download content');
+await guest.screenshot({ path: 'out/share-folder.png', fullPage: true });
+await guest.goto(fileURL);
+await guest.locator('#file-name', { hasText: 'plan.txt' }).waitFor();
+await guest.screenshot({ path: 'out/share-file.png', fullPage: true });
+step('public links: password-protected folder and file, no account needed');
+
+await page.getByRole('button', { name: 'Shared links' }).click();
+await page.getByRole('heading', { name: 'Shared links' }).waitFor();
+if (await page.locator('#links-entries tr').count() !== 2) problems.push('shared links list');
+await page.screenshot({ path: 'out/links.png', fullPage: true });
+await page.locator('#links-entries tr', { hasText: 'Wspólne' }).filter({ hasNotText: 'plan.txt' }).getByRole('button', { name: 'Revoke link' }).click();
+await confirmDialog(page, 'Revoke link');
+await page.locator('#links-entries tr').nth(1).waitFor({ state: 'detached' });
+await guest.goto(folderURL);
+await guest.getByRole('heading', { name: 'This link is not available' }).waitFor();
+// Renaming the file (as any app or SMB user could) ends its link.
+await page.locator('#links-entries tr', { hasText: 'plan.txt' }).getByRole('button', { name: 'Show in folder' }).click();
+await row(page, 'plan.txt').waitFor();
+await act(page, 'plan.txt', 'Rename').click();
+await confirmDialog(page, 'Rename', 'plan-v2.txt');
+await row(page, 'plan-v2.txt').waitFor();
+await guest.goto(fileURL);
+await guest.getByRole('heading', { name: 'This link is not available' }).waitFor();
+await page.getByRole('button', { name: 'Shared links' }).click();
+await page.locator('#links-entries tr', { hasText: 'Not working' }).waitFor();
+await page.locator('#close-links').click();
+step('shared links: revoke, rename ends the link, status shown');
+
 // ---- language: switch to Polish and back
 await page.locator('#lang').click();
-await page.locator('#upload-label', { hasText: 'Wyślij pliki' }).or(page.locator('#readonly', { hasText: 'tylko do odczytu' })).first().waitFor();
+await page.locator('#upload-label:visible, #readonly:visible').filter({ hasText: /Wyślij pliki|tylko do odczytu/ }).first().waitFor();
 if (await page.evaluate(() => document.documentElement.lang) !== 'pl') problems.push('lang attribute not updated');
 await page.reload();
 await page.locator('#files-view').waitFor();

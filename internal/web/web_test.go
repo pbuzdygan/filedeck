@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -59,22 +60,32 @@ func TestTranslations(t *testing.T) {
 			t.Errorf("en: empty %q", k)
 		}
 	}
-	html, _ := fs.ReadFile(files, "static/index.html")
-	for _, m := range regexp.MustCompile(`data-(?:i18n(?:-[a-z-]+)?|tip-i18n)="([^"]+)"`).FindAllStringSubmatch(string(html), -1) {
-		if _, ok := en[m[1]]; !ok {
-			t.Errorf("index.html uses missing key %q", m[1])
+	for _, page := range []string{"index.html", "share.html"} {
+		html, err := fs.ReadFile(files, "static/"+page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range regexp.MustCompile(`data-(?:i18n(?:-[a-z-]+)?|tip-i18n)="([^"]+)"`).FindAllStringSubmatch(string(html), -1) {
+			if _, ok := en[m[1]]; !ok {
+				t.Errorf("%s uses missing key %q", page, m[1])
+			}
 		}
 	}
-	js, _ := fs.ReadFile(files, "static/app.js")
 	namespaces := map[string]bool{}
 	for k := range en {
 		namespaces[strings.SplitN(k, ".", 2)[0]] = true
 	}
-	// Any quoted "namespace.key" literal (t('x'), ternaries, tables) must exist.
-	for _, m := range regexp.MustCompile(`'([a-z]+)\.([a-z0-9_]+)'`).FindAllStringSubmatch(string(js), -1) {
-		if namespaces[m[1]] {
-			if _, ok := en[m[1]+"."+m[2]]; !ok {
-				t.Errorf("app.js uses missing key %q", m[1]+"."+m[2])
+	for _, script := range []string{"app.js", "share.js"} {
+		js, err := fs.ReadFile(files, "static/"+script)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Any quoted "namespace.key" literal (t('x'), ternaries, tables) must exist.
+		for _, m := range regexp.MustCompile(`'([a-z]+)\.([a-z0-9_]+)'`).FindAllStringSubmatch(string(js), -1) {
+			if namespaces[m[1]] {
+				if _, ok := en[m[1]+"."+m[2]]; !ok {
+					t.Errorf("%s uses missing key %q", script, m[1]+"."+m[2])
+				}
 			}
 		}
 	}
@@ -86,9 +97,19 @@ func TestTranslations(t *testing.T) {
 		}
 	}
 	// Every error code the API can send is translated.
-	api, err := os.ReadFile("../api/http_linux.go")
+	sources, err := filepath.Glob("../api/*.go")
 	if err != nil {
 		t.Fatal(err)
+	}
+	var api []byte
+	for _, name := range sources {
+		if !strings.HasSuffix(name, "_test.go") {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			api = append(api, data...)
+		}
 	}
 	codes := regexp.MustCompile(`(?:fail\(w, \d+, |return \d+, )"([a-z_]+)"`).FindAllStringSubmatch(string(api), -1)
 	if len(codes) < 20 {

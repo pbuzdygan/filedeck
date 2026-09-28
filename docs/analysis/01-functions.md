@@ -1,33 +1,33 @@
-# Funkcje: zachować rezultat, zaprojektować mechanizm od nowa
+# Features: keep the outcome, redesign the mechanism
 
-Mapa opiera się na `reference/http/http.go`, modułach backendu i widokach `reference/frontend/src/views`. Etapy oznaczają proponowaną kolejność, nie trwałe usunięcie funkcji.
+The map is based on `reference/http/http.go`, the backend modules and the views in `reference/frontend/src/views`. Stages indicate the proposed order, not permanent removal of a feature.
 
-| Funkcja użytkownika | Obecne miejsca | Propozycja Filedeck | Etap |
+| User feature | Current locations | Filedeck proposal | Stage |
 |---|---|---|---|
-| Listowanie, sortowanie, widoki, ukryte pliki | `files/listing.go`, `files/sorting.go`, `FileListing.vue` | Listowanie z limitami; preferencja ukrywania osobna od uprawnień | 1 |
-| Pobieranie pliku, audio/wideo | `http/raw.go`, `Preview.vue` | Streaming i Range; wspólne uprawnienie odczytu treści | 1 / podgląd 3 |
-| Upload wielu plików i folderów | `resource.go`, frontend upload | Kolejka w UI; prywatny staging i jawne zatwierdzenie | 1 |
-| Wznawianie uploadu | `tus_handlers.go`, cache memory/Redis | Jeden model uploadu, identyfikator i właściciel; adapter TUS jeśli potrzebny | 2 |
-| Tworzenie katalogów | `resource.go` | Jawna operacja, walidowana przed efektem na dysku | 1 |
-| Zmiana nazwy, przeniesienie, kopiowanie, usuwanie | `resource.go`, `fileutils` | Operacje domenowe, kontrola źródła i celu, jasne konflikty | 2 |
-| Edycja tekstu i podgląd Markdown | `files/file.go`, `Editor.vue` | Limit rzeczywiście odczytanych bajtów, ochrona przed utratą cudzych zmian | 2 |
-| Wyszukiwanie nazw, listowanie rekursywne | `http/search.go`, `search/`, `resource.go` | Limit czasu, wyników, głębokości i równoległości | 2 |
-| Pobieranie katalogu jako archiwum | `raw.go` | Najpierw ZIP, bez plików specjalnych, symlinków i niebezpiecznych nazw | 2 |
-| Linki publiczne, hasło, wygasanie | `share/`, `http/public.go` | Osobne uprawnienie odbiorcy; odwołanie i jednoznaczna semantyka zasobu | 3 |
-| Miniatury, obrazy, napisy, PDF, EPUB, CSV | `img/`, `http/subtitle.go`, frontend previews | Macierz wspieranych formatów; limity parserów, izolacja aktywnych formatów | 3 |
-| Konta, hasła, profil, administrator | `users/`, `http/users.go` | Konta oddzielone od przestrzeni; sesje serwerowe, role jako zestawy uprawnień | 1 |
-| Rejestracja i automatyczne konta | `auth.go`, `auth/proxy.go`, `settings/dir.go` | Domyślnie wyłączone; nowy użytkownik bez dostępu, dopóki go nie przydzielono | później |
-| Logowanie przez proxy/hook/no-auth | `auth/` | Najpierw konta lokalne; OIDC jako preferowana integracja. Proxy wymaga jawnej granicy zaufania | później |
-| Uprawnienia i reguły ścieżek | `Permissions`, `rules/`, `data.go` | Uprawnienia do całych, jawnych przestrzeni; bez regexów i nakładających się wyjątków w v1 | 1 |
-| Terminal i hooki poleceń | `runner/`, `http/commands.go` | Rekomendacja: brak w procesie serwera. Jeśli niezbędne — osobny projekt izolowanego wykonawcy | osobna decyzja |
-| Branding, języki, motyw, preferencje | `branding/`, frontend, settings | Dane i dozwolone opcje wyglądu; bez wykonywalnych szablonów użytkownika | 3 |
-| CLI, konfiguracja, Docker, backup bazy | `cmd/`, `storage/`, Dockerfile | Małe CLI administracyjne, jedna konfiguracja, jawne migracje i backup | 1 |
-| Statystyki miejsca i sumy kontrolne | `diskUsage`, `resourceGetHandler` | Informacja o przestrzeni/quocie; checksum wymaga odczytu i limitu pracy | 2 |
+| Listing, sorting, views, hidden files | `files/listing.go`, `files/sorting.go`, `FileListing.vue` | Listing with limits; the hiding preference separate from permissions | 1 |
+| File download, audio/video | `http/raw.go`, `Preview.vue` | Streaming and Range; a common permission for reading content | 1 / preview 3 |
+| Uploading multiple files and folders | `resource.go`, frontend upload | A queue in the UI; private staging and explicit commit | 1 |
+| Resumable upload | `tus_handlers.go`, memory/Redis cache | One upload model, identifier and owner; a TUS adapter if needed | 2 |
+| Creating directories | `resource.go` | An explicit operation, validated before any effect on disk | 1 |
+| Rename, move, copy, delete | `resource.go`, `fileutils` | Domain operations, source and target checks, clear conflicts | 2 |
+| Text editing and Markdown preview | `files/file.go`, `Editor.vue` | A limit on actually read bytes, protection against losing others' changes | 2 |
+| Name search, recursive listing | `http/search.go`, `search/`, `resource.go` | Limits on time, results, depth and parallelism | 2 |
+| Downloading a directory as an archive | `raw.go` | ZIP first, without special files, symlinks and unsafe names | 2 |
+| Public links, password, expiry | `share/`, `http/public.go` | A separate recipient permission; revocation and unambiguous resource semantics | 3 |
+| Thumbnails, images, subtitles, PDF, EPUB, CSV | `img/`, `http/subtitle.go`, frontend previews | A matrix of supported formats; parser limits, isolation of active formats | 3 |
+| Accounts, passwords, profile, administrator | `users/`, `http/users.go` | Accounts separated from spaces; server-side sessions, roles as permission sets | 1 |
+| Registration and automatic accounts | `auth.go`, `auth/proxy.go`, `settings/dir.go` | Disabled by default; a new user has no access until granted | later |
+| Login through proxy/hook/no-auth | `auth/` | Local accounts first; OIDC as the preferred integration. Proxy requires an explicit trust boundary | later |
+| Permissions and path rules | `Permissions`, `rules/`, `data.go` | Permissions for whole, explicit spaces; no regexes and overlapping exceptions in v1 | 1 |
+| Terminal and command hooks | `runner/`, `http/commands.go` | Recommendation: none in the server process. If essential — a separate project for an isolated executor | separate decision |
+| Branding, languages, theme, preferences | `branding/`, frontend, settings | Data and allowed appearance options; no executable user templates | 3 |
+| CLI, configuration, Docker, database backup | `cmd/`, `storage/`, Dockerfile | A small administrative CLI, one configuration, explicit migrations and backup | 1 |
+| Space statistics and checksums | `diskUsage`, `resourceGetHandler` | Space/quota information; a checksum requires read permission and a work limit | 2 |
 
-## Najważniejsze uproszczenie modelu dostępu
+## The most important simplification of the access model
 
-Przestrzeń (`Space`) reprezentuje jawnie wskazany katalog. Konto dostaje zestaw praw do przestrzeni, np. listowanie, odczyt treści, tworzenie, nadpisywanie, przenoszenie, usuwanie i udostępnianie. Role czytelnik/edytor są presetami tych praw. Administracja kontami nie musi automatycznie dawać dostępu do treści.
+A space (`Space`) represents an explicitly designated directory. An account gets a set of permissions for a space, e.g. listing, reading content, creating, overwriting, moving, deleting and sharing. Reader/editor roles are presets of these permissions. Administering accounts does not have to grant access to content automatically.
 
-W v1 przestrzenie o różnych politykach nie powinny się nakładać ani zawierać siebie nawzajem. Wydzielenie poufnego podkatalogu wymaga rozdzielenia granic storage; ukrycie go w interfejsie nie jest zabezpieczeniem. Jeżeli potrzebna jest zgodność z obecnymi wyjątkami per plik, wymaga to odrębnego projektu ACL i testów — nie wolno automatycznie spłaszczyć ich do szerokiego dostępu.
+In v1, spaces with different policies should not overlap or contain each other. Separating a confidential subdirectory requires splitting storage boundaries; hiding it in the interface is not protection. If compatibility with the current per-file exceptions is needed, that requires a separate ACL design and tests — they must not be automatically flattened into broad access.
 
-Podgląd i pobranie przekazują użytkownikowi treść. Nie obiecujemy zabezpieczenia „może obejrzeć, ale nie może skopiować”. Można osobno sterować funkcją eksportu ZIP, ale nie traktować braku przycisku pobierania jako ochrony poufności.
+Preview and download hand the content to the user. We do not promise "can view but cannot copy" protection. The ZIP export feature can be controlled separately, but the absence of a download button must not be treated as confidentiality protection.

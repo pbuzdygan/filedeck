@@ -27,6 +27,7 @@
         </section>
       </div>
       <span id="whoami" class="muted"></span>
+      <button type="button" id="open-links" class="link"><span class="ic ic-link" aria-hidden="true"></span><span data-i18n="nav.links">Shared links</span></button>
       <button type="button" id="open-admin" class="link" hidden><span class="ic ic-users" aria-hidden="true"></span><span data-i18n="nav.users">Users</span></button>
       <button type="button" id="open-password" class="link"><span class="ic ic-key" aria-hidden="true"></span><span data-i18n="nav.password">Change password</span></button>
       <button type="button" id="logout" class="link"><span class="ic ic-logout" aria-hidden="true"></span><span data-i18n="nav.logout">Log out</span></button>
@@ -128,6 +129,22 @@
     <p id="trash-empty" class="muted center" hidden data-i18n="trash.empty">The trash is empty.</p>
   </section>
 
+  <section id="links-view" class="card" hidden>
+    <div class="row between wrap">
+      <h1 data-i18n="links.title">Shared links</h1>
+      <div class="row wrap">
+        <label id="links-all-label" class="check" hidden><input type="checkbox" id="links-all"> <span data-i18n="links.all_users">All users</span></label>
+        <button type="button" id="close-links"><span class="ic ic-arrow-left" aria-hidden="true"></span><span data-i18n="trash.back">Back to files</span></button>
+      </div>
+    </div>
+    <p class="muted" data-i18n="links.hint">Anyone with a link can download the shared item without signing in. A link stops working when it expires, when it is revoked, or when the item is moved, renamed or deleted.</p>
+    <table>
+      <thead><tr><th data-i18n="links.item">Shared item</th><th id="links-owner-col" data-i18n="links.owner" hidden>Owner</th><th data-i18n="links.expires">Expires</th><th data-i18n="links.status">Status</th><th></th></tr></thead>
+      <tbody id="links-entries"></tbody>
+    </table>
+    <p id="links-empty" class="muted center" hidden data-i18n="links.empty">No shared links.</p>
+  </section>
+
   <section id="admin-view" class="card" hidden>
     <div class="row between"><h1 data-i18n="admin.title">Users</h1><button type="button" id="close-admin"><span class="ic ic-x" aria-hidden="true"></span><span data-i18n="common.close">Close</span></button></div>
     <label class="reauth"><span data-i18n="admin.reauth">Your password (required for every change)</span>
@@ -186,6 +203,36 @@
     <label><span id="transfer-path-label" data-i18n="transfer.path">Destination path (in the space)</span> <input name="path" maxlength="4096" spellcheck="false"></label>
     <p class="muted" data-i18n="transfer.hint">The parent folder must exist. Nothing is overwritten. Moving to another space puts the source in its trash.</p>
     <div class="row end"><button type="button" id="transfer-cancel" data-i18n="common.cancel">Cancel</button><button type="submit" class="primary" data-i18n="transfer.submit">Run</button></div>
+  </form>
+</dialog>
+
+<dialog id="share-dialog">
+  <form id="share-form" method="dialog">
+    <h2 data-i18n="share.title">Share a link</h2>
+    <p id="share-source" class="muted"></p>
+    <div id="share-settings">
+      <label><span data-i18n="share.expires">Link expires after</span>
+        <select name="hours">
+          <option value="1" data-i18n="share.h1">1 hour</option>
+          <option value="24" data-i18n="share.d1">1 day</option>
+          <option value="168" data-i18n="share.d7" selected>7 days</option>
+          <option value="720" data-i18n="share.d30">30 days</option>
+          <option value="2160" data-i18n="share.d90">90 days</option>
+          <option value="8760" data-i18n="share.y1">1 year</option>
+        </select>
+      </label>
+      <label><span data-i18n="share.password">Password (optional, min. 8 characters)</span> <input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="1024"></label>
+      <p id="share-hint" class="muted"></p>
+    </div>
+    <div id="share-result" hidden>
+      <label><span data-i18n="share.url">Link</span> <input id="share-url" readonly spellcheck="false"></label>
+      <p class="muted" data-i18n="share.once">Copy the link now: for security it is not stored and cannot be shown again. You can always revoke it and create a new one under “Shared links”.</p>
+    </div>
+    <div class="row end">
+      <button type="button" id="share-cancel" data-i18n="common.close">Close</button>
+      <button type="submit" id="share-submit" class="primary" data-i18n="share.create">Create link</button>
+      <button type="button" id="share-copy" class="primary" hidden><span class="ic ic-copy" aria-hidden="true"></span><span data-i18n="share.copy">Copy link</span></button>
+    </div>
   </form>
 </dialog>
 

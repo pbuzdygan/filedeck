@@ -5,7 +5,8 @@ name: filedeck
 services:
   filedeck:
     build: .
-    image: filedeck:local
+    # Local build by default; set FILEDECK_IMAGE (e.g. ghcr.io/pbuzdygan/filedeck:latest) to use a released image.
+    image: "${FILEDECK_IMAGE:-filedeck:local}"
     restart: unless-stopped
     # UID:GID the process runs as; must be able to write the mapped directories.
     user: "${FILEDECK_USER:-65532:65532}"
@@ -21,8 +22,8 @@ services:
       - "${FILEDECK_BIND:-127.0.0.1}:${FILEDECK_PORT:-8443}:8443"
     volumes:
       - filedeck-data:/data     # application state: accounts, sessions, certificate
-      - filedeck-files:/files   # own space "Moje pliki"
-      - docker_dev:/spaces/docker_dev   # every /spaces/<name> becomes a space
+      - filedeck-files:/files   # own space "My files"
+      # Host directories as /spaces/<name>: see compose.override.example.yaml.
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -32,9 +33,3 @@ services:
 volumes:
   filedeck-data:
   filedeck-files:
-  docker_dev:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /home/buzsys/github

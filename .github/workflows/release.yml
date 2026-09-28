@@ -1,0 +1,140 @@
+name: Release image
+# Builds and publishes the container image only when a GitHub release is
+# published. The two channels never mix:
+#
+#   branch  release tag = image tag   moving tag   (ghcr.io/<owner>/<repo>)
+#   main    X.Y.Z                     latest
+#   dev     devX.Y.Z                  dev_latest
+#
+# Images are multi-platform (linux/amd64, linux/arm64). The tag format selects
+# the channel, and the tagged commit must be on that channel's branch. Main
+# releases cannot be pre-releases. A published version tag is never
+# overwritten, and latest/dev_latest only move forward.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-image
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      image: ${{ steps.plan.outputs.image }}
+      fixed: ${{ steps.plan.outputs.fixed }}
+      moving: ${{ steps.plan.outputs.moving }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+          fetch-depth: 0
+      - id: plan
+        # Values from the event go through env, never into the script text.
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "$TAG" =~ ^([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            branch=main prefix="" version="${BASH_REMATCH[1]}"
+            fixed="$version" moving=latest
+            if [[ "$PRERELEASE" == "true" ]]; then
+              echo "::error::A main release ($TAG) must not be marked as a pre-release."
+              exit 1
+            fi
+          elif [[ "$TAG" =~ ^dev([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            branch=dev prefix=dev version="${BASH_REMATCH[1]}"
+            fixed="dev$version" moving=dev_latest
+          else
+            echo "::error::Release tag must be X.Y.Z (main) or devX.Y.Z (dev), got '$TAG'."
+            exit 1
+          fi
+          commit="$(git rev-parse HEAD)"
+          git fetch --no-tags origin "refs/heads/$branch:refs/remotes/origin/$branch"
+          if ! git merge-base --is-ancestor "$commit" "origin/$branch"; then
+            echo "::error::Tag $TAG points to $commit, which is not on branch $branch."
+            exit 1
+          fi
+          # Move latest/dev_latest only for the highest version released from this branch.
+          highest="$(git tag -l --merged "origin/$branch" | sed -nE "s/^${prefix}([0-9]+\.[0-9]+\.[0-9]+)$/\1/p" | sort -V | tail -n1)"
+          if [[ "$highest" != "$version" ]]; then
+            echo "::warning::$TAG is older than ${prefix}${highest}; publishing $fixed only, $moving stays."
+            moving=""
+          fi
+          {
+            echo "image=ghcr.io/${REPO,,}"
+            echo "fixed=$fixed"
+            echo "moving=$moving"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "Channel $branch: $TAG ($commit) -> $fixed ${moving:-(no moving tag)}"
+
+  test:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - run: test -z "$(gofmt -l cmd internal)"
+      - run: go vet ./...
+      - run: go test -race -count=1 -timeout=180s ./...
+
+  publish:
+    needs: [plan, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ${{ needs.plan.outputs.image }}
+      FIXED: ${{ needs.plan.outputs.fixed }}
+      MOVING: ${{ needs.plan.outputs.moving }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+      - name: Log in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+      - name: Refuse to overwrite a published version
+        run: |
+          if docker buildx imagetools inspect "$IMAGE:$FIXED" >/dev/null 2>&1; then
+            echo "::error::$IMAGE:$FIXED already exists; publish a new version instead."
+            exit 1
+          fi
+      - name: Build and push
+        run: |
+          set -euo pipefail
+          docker buildx create --use --name release >/dev/null
+          tags=(-t "$IMAGE:$FIXED")
+          if [[ -n "$MOVING" ]]; then tags+=(-t "$IMAGE:$MOVING"); fi
+          docker buildx build . --push --platform linux/amd64,linux/arm64 \
+            --provenance=mode=max --sbom=true \
+            --label "org.opencontainers.image.title=Filedeck" \
+            --label "org.opencontainers.image.version=$FIXED" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.ref.name=$TAG" \
+            "${tags[@]}"
+          echo "Published $IMAGE:$FIXED ${MOVING:+and $IMAGE:$MOVING}" >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: docker logout ghcr.io

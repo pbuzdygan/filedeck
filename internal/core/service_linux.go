@@ -149,6 +149,7 @@ type Service struct {
 	policyMu sync.RWMutex
 	grants   map[string]map[string]Permission
 	jobs     jobs
+	linkGate chan struct{}
 	now      func() time.Time
 }
 
@@ -165,7 +166,7 @@ func Open(state string, spaces map[string]string, limits Limits, modes storage.M
 	if err != nil {
 		return nil, err
 	}
-	s := &Service{state: st, spaces: make(map[string]*storage.Space), limits: limits, uploads: make(map[string]*transfer), results: make(map[string]*record), grants: make(map[string]map[string]Permission), jobs: jobs{all: make(map[string]*job)}, now: clock}
+	s := &Service{state: st, spaces: make(map[string]*storage.Space), limits: limits, uploads: make(map[string]*transfer), results: make(map[string]*record), grants: make(map[string]map[string]Permission), jobs: jobs{all: make(map[string]*job)}, linkGate: make(chan struct{}, 2), now: clock}
 	defer func() {
 		if err != nil {
 			for _, u := range s.uploads {
@@ -208,7 +209,7 @@ func Open(state string, spaces map[string]string, limits Limits, modes storage.M
 		if v := meta.Get([]byte("version")); v != nil && string(v) != "1" && string(v) != "2" {
 			return errors.New("unsupported uploads schema")
 		}
-		for _, b := range [][]byte{uploadsBucket, trashBucket} {
+		for _, b := range [][]byte{uploadsBucket, trashBucket, linksBucket} {
 			if _, e = tx.CreateBucketIfNotExists(b); e != nil {
 				return e
 			}
@@ -448,13 +449,15 @@ func (s *Service) SetPermissions(subject string, grants map[string]Permission) e
 		}
 	}
 	s.policyMu.Lock()
-	defer s.policyMu.Unlock()
 	if len(copied) == 0 {
 		delete(s.grants, subject)
 	} else {
 		s.grants[subject] = copied
 	}
-	return nil
+	s.policyMu.Unlock()
+	// Revocation is permanent for public links: restoring access later must not
+	// silently revive links created before.
+	return s.pruneLinks(subject)
 }
 
 // grantedLocked requires policyMu.
@@ -752,7 +755,7 @@ func (s *Service) Abort(subject, id string) error {
 }
 
 // Expire reclaims quota for abandoned transfers, drops old publication results
-// and purges trash items past retention. The server invokes it periodically.
+// purges trash items past retention and removes expired links. The server invokes it periodically.
 func (s *Service) Expire() error {
 	s.mu.Lock()
 	items := make([]*transfer, 0, len(s.uploads))
@@ -771,7 +774,7 @@ func (s *Service) Expire() error {
 	s.mu.Lock()
 	stale := s.pruneResults(s.now())
 	s.mu.Unlock()
-	return errors.Join(result, s.drop(stale...), s.expireTrash())
+	return errors.Join(result, s.drop(stale...), s.expireTrash(), s.expireLinks())
 }
 
 // Close waits for in-flight operations and keeps recorded uploads for resume

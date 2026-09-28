@@ -1,52 +1,54 @@
-# Kolejność prac i warunki odbioru
+# Work order and acceptance criteria
 
-## A. Domknąć analizę i kontrakty
+This roadmap was written before the implementation; actual progress is tracked in [PROGRESS.md](../PROGRESS.md).
 
-Przed kodem aplikacji ustalić platformy, model zmian zewnętrznych, role, obsługiwane operacje i semantykę udziałów. Dla każdego advisory z rejestru nadać ostateczny status: mechanizm obecny / poprawiony w badanym kodzie / zależny od konfiguracji / nie dotyczy / wymaga dowodu. Obecny rejestr celowo nie udaje ukończonej weryfikacji.
+## A. Complete the analysis and contracts
 
-Oczekiwane artefakty: zaakceptowana mapa funkcji, model zagrożeń, macierz praw, kontrakty błędów i limity, decyzje o wspieranych filesystemach. Uwzględnić przegląd niewymienionych w advisory powierzchni: admin, import, frontend, zależności, CI i wydania.
+Before writing application code, decide the platforms, the model of external changes, roles, supported operations and share semantics. Give every advisory in the register a final status: mechanism present / fixed in the examined code / configuration-dependent / not applicable / needs evidence. The current register deliberately does not pretend to be a completed verification.
 
-## B. Prototyp rdzenia bezpieczeństwa
+Expected artifacts: an accepted feature map, a threat model, a permission matrix, error contracts and limits, decisions about supported filesystems. Include a review of surfaces not mentioned in advisories: admin, import, frontend, dependencies, CI and releases.
 
-Mały prototyp operacji filesystemu i uploadu, bez rozbudowanego UI. To właściwy kolejny krok po decyzjach, nie przepisywanie komponentów wizualnych.
+## B. Security core prototype
 
-| Test kontraktu | Wynik wymagany |
+A small prototype of filesystem operations and upload, without an elaborate UI. This is the right next step after the decisions, not rewriting visual components.
+
+| Contract test | Required result |
 |---|---|
-| `..`, podwójne kodowanie, slash/backslash, ścieżka absolutna | Odrzucenie lub jednoznaczna interpretacja zgodna z kontraktem; zero wyjścia poza przestrzeń |
-| Symlink wewnętrzny/zewnętrzny/dangling, równoległa podmiana katalogu | Brak odczytu/zapisu poza dozwoloną granicą i brak obejścia polityki symlinków |
-| FIFO/socket/device w odczycie, podglądzie i ZIP | Szybkie odrzucenie bez zawieszenia workera |
-| Nieprawidłowy upload na istniejący plik/katalog | Oryginalne dane niezmienione; cleanup dotyczy wyłącznie staging |
-| Dwa PATCH z tym samym offsetem, dwa commity na ten sam cel | Serializacja lub konflikt; brak podwojonych danych i zdarzeń finalizacji |
-| Utrata sieci, brak miejsca, restart w każdym stanie uploadu | Stan odzyskiwalny; brak usunięcia cudzych danych |
-| Odebranie praw podczas uploadu | Finalizacja odmówiona zgodnie z ustaloną semantyką |
-| Zewnętrzna zmiana pliku podczas edycji | Konflikt lub jawny kontrakt ograniczeń; bez obietnicy CAS opartej jedynie na stat |
+| `..`, double encoding, slash/backslash, absolute path | Rejection or an unambiguous interpretation consistent with the contract; zero escapes from the space |
+| Internal/external/dangling symlink, concurrent directory swap | No read/write outside the allowed boundary and no bypass of the symlink policy |
+| FIFO/socket/device in read, preview and ZIP | Fast rejection without hanging a worker |
+| An invalid upload onto an existing file/directory | Original data unchanged; cleanup affects only staging |
+| Two PATCHes with the same offset, two commits to the same target | Serialization or a conflict; no duplicated data or finalisation events |
+| Network loss, no space, restart in every upload state | Recoverable state; no deletion of others' data |
+| Permissions revoked during an upload | Finalisation refused according to the agreed semantics |
+| External change of a file during editing | A conflict or an explicit contract of limitations; no CAS promise based only on stat |
 
-Testy muszą sprawdzać stan danych i efekt uboczny, nie tylko status HTTP. Kontrolowane wyścigi z barierami są bardziej miarodajne niż samo wielokrotne uruchomienie testu. `go test -race` wykrywa wyścigi pamięci, nie dowodzi braku TOCTOU filesystemu.
+Tests must check the state of the data and side effects, not just the HTTP status. Controlled races with barriers are more meaningful than just running a test many times. `go test -race` detects memory races; it does not prove the absence of filesystem TOCTOU.
 
-## C. Działająca podstawa
+## C. A working foundation
 
-Konta lokalne, sesje, przestrzenie, listowanie, pobieranie i upload. Przed odbiorem:
+Local accounts, sessions, spaces, listing, download and upload. Before acceptance:
 
-- Stary token/cookie odrzucony po logout, resecie hasła i blokadzie konta.
-- Żądania CSRF i obce identyfikatory nie zmieniają danych.
-- Wszystkie drogi odczytu respektują tę samą macierz praw.
-- Limity utrzymane przy wielu użytkownikach, także po przerwaniu transferu.
-- Backup i odtworzenie przećwiczone na danych testowych.
+- An old token/cookie is rejected after logout, password reset and account disable.
+- CSRF requests and foreign identifiers do not change data.
+- All read paths respect the same permission matrix.
+- Limits hold with many users, also after an interrupted transfer.
+- Backup and restore rehearsed on test data.
 
-## D. Pełna praca na plikach
+## D. Full file work
 
-Kopiowanie, przenoszenie, usuwanie, edycja, wyszukiwanie, ZIP i wznowienia. Kryteria: jawne zachowanie konfliktów i częściowych operacji, testy anulowania, poprawne nazwy wpisów ZIP (także odbiorca Windows), ograniczony koszt dużych katalogów. Paginacja nie gwarantuje taniego sortowania wielkiego katalogu — potrzebny pomiar albo indeks.
+Copy, move, delete, edit, search, ZIP and resumption. Criteria: explicit behaviour for conflicts and partial operations, cancellation tests, correct ZIP entry names (also for a Windows recipient), bounded cost for large directories. Pagination does not guarantee cheap sorting of a huge directory — a measurement or an index is needed.
 
-## E. Udziały i podglądy
+## E. Shares and previews
 
-Dodać po zatwierdzeniu semantyki zasobów. Obowiązkowe scenariusze: udział użytkownika A, delete/rename/replace przez B; ponowne utworzenie dawnej ścieżki; zmiana poza aplikacją; wygaśnięcie i odwołanie; odebranie właścicielowi praw; próba wyjścia poza udostępniony katalog. XSS sprawdzić w prawdziwej przeglądarce; parsery testować z dużymi i uszkodzonymi plikami.
+Add after the resource semantics are approved. Mandatory scenarios: a share by user A, delete/rename/replace by B; recreating the old path; a change outside the application; expiry and revocation; revoking the owner's permissions; an attempt to escape the shared directory. Check XSS in a real browser; test parsers with large and corrupted files.
 
-## F. Migracja i wydanie
+## F. Migration and release
 
-Import w trybie dry-run na kopii starej bazy, raport wszystkich nieprzeniesionych reguł i konfliktów. Żadnego automatycznego poszerzania praw dla „zgodności”. Stare sesje i linki domyślnie wygasają; migracja haseł wymaga osobnej oceny zgodności. Wycofanie wdrożenia musi uwzględniać zmiany plików, nie tylko przywrócenie bazy.
+Import in dry-run mode on a copy of the old database, a report of all rules and conflicts that were not carried over. No automatic broadening of permissions for "compatibility". Old sessions and links expire by default; password migration needs a separate compatibility assessment. Rolling back a deployment must take file changes into account, not just restoring the database.
 
-CI: testy kontraktów i integracyjne na wspieranych platformach, fuzzing ścieżek i parserów, race detector, kontrola zależności i sekretów, powtarzalny build z lockfile. Testy starych podatności są źródłem scenariuszy; nowe testy piszemy pod kontrakty Filedeck. Przed publicznym wydaniem niezależny przegląd bezpieczeństwa krytycznego rdzenia i dokumentacja ograniczeń.
+CI: contract and integration tests on supported platforms, path and parser fuzzing, the race detector, dependency and secret checks, a reproducible build with a lockfile. Tests of old vulnerabilities are a source of scenarios; new tests are written against Filedeck's contracts. Before a public release, an independent security review of the critical core and documentation of the limitations.
 
-## Reguła zamknięcia advisory dla Filedeck
+## Rule for closing an advisory in Filedeck
 
-Każde GHSA musi mieć wskazany mechanizm, decyzję projektową oraz test z wynikiem albo uzasadnienie „funkcja nie występuje”. Status „nie dotyczy” ponownie otwieramy, gdy funkcja zostaje dodana. Sam upgrade biblioteki, wyłącznik w UI lub zmiana nazwy projektu nie zamyka zagrożenia.
+Every GHSA must have an identified mechanism, a design decision and a test with a result, or the justification "the feature does not exist". A "not applicable" status is reopened when the feature is added. A library upgrade, a UI switch or a project rename alone does not close a threat.

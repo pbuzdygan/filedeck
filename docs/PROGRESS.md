@@ -1,208 +1,231 @@
-# Stan realizacji
+# Progress
 
-2026-09-28 — etap 1: prototyp rdzenia; etap 2: konta, sesje i API HTTP; etap 3: trwałe i wznawialne uploady; etap 4: interfejs WWW i wdrożenie Docker Compose; etap 5: przestrzenie, uprawnienia per przestrzeń, zmiana nazwy i kosz; etap 6: podgląd, edytor, kopiowanie/przenoszenie, drag & drop, motyw, przegląd bezpieczeństwa; etap 7: EN/PL, powiadomienia, zaznaczanie, wysyłanie folderów; etap 8: poprawka reauth, selftest udziałów, sortowanie, wyszukiwanie.
+2026-09-28 — stage 1: core prototype; stage 2: accounts, sessions and HTTP API; stage 3: durable, resumable uploads; stage 4: web interface and Docker Compose deployment; stage 5: spaces, per-space permissions, rename and trash; stage 6: preview, editor, copy/move, drag & drop, theme, security review; stage 7: EN/PL, notifications, selection, folder upload; stage 8: reauth fix, share selftest, sorting, search; stage 9: public links; release preparation.
 
-## Etap 1 — rdzeń
+## Stage 1 — core
 
-Nowy moduł Go, Linuxowy storage, polityka dostępu, cykl uploadu w pamięci, lokalne CLI, obraz Docker oraz konfiguracja CI dla przyszłego repo Filedeck. Repo `reference` pozostaje materiałem porównawczym i nie było modyfikowane.
+A new Go module, Linux storage, access policy, in-memory upload lifecycle, a local CLI, a Docker image and a CI configuration for the future Filedeck repository. The `reference` checkout remains comparison material and was not modified.
 
-| Kontrakt | Główne testy |
+| Contract | Main tests |
 |---|---|
-| Granica ścieżki i zakaz symlinków | `TestPathContract`, `TestReadRejectsSymlinksAndFIFO`, `TestConcurrentDirectorySymlinkSwapCannotReadOutside`, `FuzzValidPath` |
-| Ograniczone listowanie | `TestListIsBoundedAndOmitsSpecialEntries` |
-| Prywatny state i jedna instancja na state | `TestOpenRejectsUnsafeStateAndConcurrentInstance` |
-| Bezpieczne odzyskanie po restarcie | `TestRecoveryOnlyDeletesOwnedStagingNames`, `TestRecoveryRefusesSymlinkInsteadOfFollowingIt` |
-| Brak utraty istniejących danych | `TestPublishNeverOverwritesAnyExistingEntry`, `TestFailedUploadCannotDeleteOrTruncateDestination` |
-| Atomowa publikacja i konflikty | `TestUploadPublishesOnlyAfterCompletion`, `TestConcurrentCommitsNeverOverwrite` |
-| Serializacja fragmentów | `TestConcurrentPatchAtSameOffset` |
-| Limity, błędy i anulowanie | `TestFailedAndOversizedChunksRollBack`, `TestChunkCapIndependentOfFileSize`, `TestCancellationRollsBack`, `TestQuotasExpiryAndAbort` |
-| Właściciel i odwołanie dostępu | `TestOwnershipAndRevocation` |
-| Kontrola przed publikacją | `TestCommitChecksActualStagingLength`, `TestExpiredCommitCleansOnlyStaging`, `TestCommitRejectsSymlinkParentAndAllowsEmptyFile` |
+| Path boundary and no symlinks | `TestPathContract`, `TestReadRejectsSymlinksAndFIFO`, `TestConcurrentDirectorySymlinkSwapCannotReadOutside`, `FuzzValidPath` |
+| Bounded listing | `TestListIsBoundedAndOmitsSpecialEntries` |
+| Private state and one instance per state | `TestOpenRejectsUnsafeStateAndConcurrentInstance` |
+| Safe recovery after a restart | `TestRecoveryOnlyDeletesOwnedStagingNames`, `TestRecoveryRefusesSymlinkInsteadOfFollowingIt` |
+| No loss of existing data | `TestPublishNeverOverwritesAnyExistingEntry`, `TestFailedUploadCannotDeleteOrTruncateDestination` |
+| Atomic publication and conflicts | `TestUploadPublishesOnlyAfterCompletion`, `TestConcurrentCommitsNeverOverwrite` |
+| Chunk serialization | `TestConcurrentPatchAtSameOffset` |
+| Limits, errors and cancellation | `TestFailedAndOversizedChunksRollBack`, `TestChunkCapIndependentOfFileSize`, `TestCancellationRollsBack`, `TestQuotasExpiryAndAbort` |
+| Ownership and access revocation | `TestOwnershipAndRevocation` |
+| Checks before publication | `TestCommitChecksActualStagingLength`, `TestExpiredCommitCleansOnlyStaging`, `TestCommitRejectsSymlinkParentAndAllowsEmptyFile` |
 | CLI | `TestOperatorCLI` |
 
-Wykonano testy Go, `go vet`, testy z race detectorem w obrazie Go, fuzzing ścieżek (181880 wykonań w sesji 10 s) i `govulncheck` v1.8.0 — bez wykrytych podatności w skanowanym kodzie. Race detector dotyczy wyścigów pamięci; osobny test zamienia katalog z symlinkiem podczas odczytów. Żaden pojedynczy test nie dowodzi kompletnej odporności na wszystkie wyścigi filesystemu.
+Run: Go tests, `go vet`, race-detector tests in the Go image, path fuzzing (181,880 executions in a 10 s session) and `govulncheck` v1.8.0 — no vulnerabilities found in the scanned code. The race detector covers memory races; a separate test swaps a directory with a symlink during reads. No single test proves complete resistance to all filesystem races.
 
-Zbudowano obraz `filedeck:prototype` i wykonano test CLI w kontenerze bez sieci, capabilities i zapisu do warstwy obrazu: upload, odczyt, listowanie, zachowanie danych przy konflikcie, opróżnienie staging oraz odmowa konfiguracji z osobnymi bind mountami root/state. Workflow CI jest przygotowany, ale nie był uruchamiany w GitHub Actions.
+Built the `filedeck:prototype` image and ran a CLI test in a container without network, capabilities or writes to the image layer: upload, read, listing, data preserved on conflict, staging emptied, and refusal of a configuration with separate root/state bind mounts. The CI workflow was prepared but not run in GitHub Actions.
 
-## Co te testy adresują w rejestrze GHSA
+## What these tests address in the GHSA register
 
-- Cleanup uploadu nie otrzymuje ścieżki celu: klasa GHSA-c4fr-5f24-4wrj i GHSA-fmm7-x4gx-8jhr.
-- Fragmenty mają limit i serializację: klasy GHSA-ffv3-7h97-993q i GHSA-4r8p-gqj2-mwgm. Nie jest to jeszcze implementacja protokołu TUS.
-- Symlinki nie są dozwoloną drogą dostępu: klasy GHSA-239w-m3h6-ch8v, GHSA-8wc8-hf36-mjh9 i GHSA-7w29-q235-57m9, w granicach jawnie opisanego modelu uchwytów.
-- Odczyt odrzuca FIFO przed otwarciem danych. Archiwizacja, z której pochodzi GHSA-8q5j-8wcr-8v2v, nie jest jeszcze implementowana i będzie wymagać własnych testów.
+- Upload cleanup never receives the target path: class GHSA-c4fr-5f24-4wrj and GHSA-fmm7-x4gx-8jhr.
+- Chunks have a limit and are serialized: classes GHSA-ffv3-7h97-993q and GHSA-4r8p-gqj2-mwgm. This is not yet an implementation of the TUS protocol.
+- Symlinks are not an allowed access path: classes GHSA-239w-m3h6-ch8v, GHSA-8wc8-hf36-mjh9 and GHSA-7w29-q235-57m9, within the explicitly described handle model.
+- Reading rejects FIFOs before opening the data. Archiving, where GHSA-8q5j-8wcr-8v2v comes from, is not implemented yet and will need its own tests.
 
-Nie oznaczamy wszystkich 62 advisory jako zamkniętych. Brak sesji, udziałów czy rendererów w prototypie nie jest dowodem bezpieczeństwa ich przyszłych implementacji.
+We do not mark all 62 advisories as closed. The absence of sessions, shares or renderers in the prototype is not proof of the security of their future implementations.
 
-## Etap 2 — konta, sesje i API HTTP
+## Stage 2 — accounts, sessions and HTTP API
 
-Pakiety `internal/identity` (konta, hasła Argon2id, sesje serwerowe w bbolt) i `internal/api` (adapter HTTP), polecenia `bootstrap`, `reset-password` i `serve`. Szczegóły: sekcja „Konta, sesje i API HTTP” w [CONTRACT.md](CONTRACT.md).
+Packages `internal/identity` (accounts, Argon2id passwords, server-side sessions in bbolt) and `internal/api` (HTTP adapter), commands `bootstrap`, `reset-password` and `serve`. Details: section "Accounts, sessions and the HTTP API" in [CONTRACT.md](CONTRACT.md).
 
-| Kontrakt | Główne testy |
+| Contract | Main tests |
 |---|---|
-| Bootstrap tylko raz, hash hasła i sesji zamiast sekretów w bazie, trwałość po restarcie | `TestBootstrapPersistenceAndSecretStorage`, `TestHTTPSTransportAndRestartedIdentityStore` |
-| Zmiana/reset hasła, blokada i zmiana praw unieważniają sesje | `TestPasswordChangeRevokesAllSessions`, `TestPasswordChangeAndAdminDisableRevokeSessions`, `TestAdministrativeResetAndPermissionsInvalidateOldCookies` |
-| Ostatni administrator, rola i reauth | `TestAccountDisablePermissionsAndLastAdministrator`, `TestAdminRequiresRoleAndReauthentication` |
-| Wygaśnięcie i ograniczenie sesji oraz pracy logowania | `TestIdleAndAbsoluteExpiry`, `TestLoginHasBoundedSessionsAndWork` |
-| Prywatna baza, odrzucenie symlinku i praw publicznych | `TestDatabaseSymlinkAndPublicPermissionsRejected` |
-| Cookie, wylogowanie, odrzucenie odtworzonej sesji | `TestLoginCookieLogoutAndReplayedSession` |
+| Bootstrap only once, password and session hashes instead of secrets in the database, persistence across restarts | `TestBootstrapPersistenceAndSecretStorage`, `TestHTTPSTransportAndRestartedIdentityStore` |
+| Password change/reset, disable and permission change revoke sessions | `TestPasswordChangeRevokesAllSessions`, `TestPasswordChangeAndAdminDisableRevokeSessions`, `TestAdministrativeResetAndPermissionsInvalidateOldCookies` |
+| Last administrator, role and reauth | `TestAccountDisablePermissionsAndLastAdministrator`, `TestAdminRequiresRoleAndReauthentication` |
+| Session expiry and limits, bounded login work | `TestIdleAndAbsoluteExpiry`, `TestLoginHasBoundedSessionsAndWork` |
+| Private database, symlink and public permissions rejected | `TestDatabaseSymlinkAndPublicPermissionsRejected` |
+| Cookie, logout, replayed session rejected | `TestLoginCookieLogoutAndReplayedSession` |
 | CSRF, `Origin`, `Host`, `Sec-Fetch-Site` | `TestCSRFOriginAndHostBoundaries` |
-| Limity i ścisłość JSON, jedno dekodowanie ścieżki, niejednoznaczne cookie | `TestJSONLimitsAndUnknownFields`, `TestPathDecodingAndCookieAmbiguity` |
-| Upload/pobieranie/Range/konflikt przez HTTP | `TestUploadDownloadRangeAndConflict` |
-| Proxy i ignorowanie nagłówków forwarded, limit logowań | `TestProxyBoundaryAndForwardedHeadersIgnored`, `TestLoginRateCannotUseForwardedIPToBypassLimit`, `TestRateLimitAndBoundedBookkeeping` |
-| Wylogowanie w trakcie uploadu blokuje publikację; upload ID prywatne | `TestLogoutDuringUploadPreventsPublication`, `TestUploadIDsRemainPrivateBetweenWriters` |
+| JSON limits and strictness, single path decoding, ambiguous cookies | `TestJSONLimitsAndUnknownFields`, `TestPathDecodingAndCookieAmbiguity` |
+| Upload/download/Range/conflict over HTTP | `TestUploadDownloadRangeAndConflict` |
+| Proxy and ignored forwarded headers, login limit | `TestProxyBoundaryAndForwardedHeadersIgnored`, `TestLoginRateCannotUseForwardedIPToBypassLimit`, `TestRateLimitAndBoundedBookkeeping` |
+| Logout during an upload blocks publication; upload IDs are private | `TestLogoutDuringUploadPreventsPublication`, `TestUploadIDsRemainPrivateBetweenWriters` |
 
-Weryfikacja: `go test` i `go vet` lokalnie; `go test -race` w obrazie `golang:1.27.1-bookworm` bez sieci — wszystkie pakiety przechodzą. `govulncheck` v1.8.0: kod nie wywołuje żadnej znanej podatności; na poziomie modułu zgłoszono GO-2026-5932 (`x/crypto/openpgp`, bez poprawki), pakietu, którego Filedeck nie importuje — z `x/crypto` używany jest tylko `argon2`. Test end-to-end zbudowanej binarki w trybie `-insecure-local`: bootstrap, złe hasło → 401, brak CSRF → 403, brak `Origin` → 403, upload/commit/listowanie/pobieranie z `Content-Disposition: attachment` i CSP, traversal `../state/identity.db` → 400, wylogowanie, odtworzone cookie → 401, obcy `Host` → 421. Nie testowano jeszcze serwera w kontenerze z TLS ani za rzeczywistym reverse proxy.
+Verification: `go test` and `go vet` locally; `go test -race` in the `golang:1.27.1-bookworm` image without network — all packages pass. `govulncheck` v1.8.0: the code calls no known vulnerability; at module level it reported GO-2026-5932 (`x/crypto/openpgp`, no fix), a package Filedeck does not import — only `argon2` is used from `x/crypto`. End-to-end test of the built binary in `-insecure-local` mode: bootstrap, wrong password → 401, missing CSRF → 403, missing `Origin` → 403, upload/commit/listing/download with `Content-Disposition: attachment` and CSP, traversal `../state/identity.db` → 400, logout, replayed cookie → 401, foreign `Host` → 421. The server in a container with TLS and behind a real reverse proxy was not tested yet.
 
-### Co etap 2 adresuje w rejestrze GHSA
+### What stage 2 addresses in the GHSA register
 
-Mechanizmy i testy tego etapu odpowiadają klasom z sekcji „Konta i sesje” [rejestru advisory](analysis/05-advisories.md):
+The mechanisms and tests of this stage correspond to the classes in the "Accounts and sessions" section of the [advisory register](analysis/05-advisories.md):
 
-- Sesje serwerowe z odwołaniem: GHSA-7xwp-2cpp-p8r7 (replay po wylogowaniu), GHSA-v7vv-5wj2-gfcj (reset hasła nie unieważnia sesji), GHSA-v3jv-rmh2-635j (wygasłe JWT przy proxy auth).
-- Brak auth nagłówkiem proxy i brak auto-provisioningu: GHSA-xqp3-jq6g-x3qm, GHSA-j7jh-37pf-mf8h, GHSA-7526-j432-6ppp.
-- Brak samorejestracji, jawne prawa przy tworzeniu kont, bez prawa wykonywania poleceń: GHSA-6759-996p-gpj6, GHSA-5gg9-5g7w-hm73, GHSA-x8jc-jvqm-pm3f, GHSA-576v-w77m-gr84 (nazwy tylko małymi literami, brak katalogów domowych z nazwy).
-- Zmiana hasła wymaga obecnego hasła i jest wersjonowana: GHSA-hxw8-4h9j-hq2r, GHSA-cm2r-rg7r-p7gg.
-- Hash atrapa dla nieistniejącego konta: GHSA-43mm-m3h2-3prc (ograniczenie, nie formalny dowód braku kanału czasowego).
-- Limit logowań i bramka obliczeń Argon2: GHSA-w5fm-68j4-fpc4.
+- Server-side sessions with revocation: GHSA-7xwp-2cpp-p8r7 (replay after logout), GHSA-v7vv-5wj2-gfcj (password reset does not revoke sessions), GHSA-v3jv-rmh2-635j (expired JWT with proxy auth).
+- No proxy header auth and no auto-provisioning: GHSA-xqp3-jq6g-x3qm, GHSA-j7jh-37pf-mf8h, GHSA-7526-j432-6ppp.
+- No self-registration, explicit permissions when creating accounts, no command execution permission: GHSA-6759-996p-gpj6, GHSA-5gg9-5g7w-hm73, GHSA-x8jc-jvqm-pm3f, GHSA-576v-w77m-gr84 (lowercase names only, no home directories derived from names).
+- A password change requires the current password and is versioned: GHSA-hxw8-4h9j-hq2r, GHSA-cm2r-rg7r-p7gg.
+- A dummy hash for non-existent accounts: GHSA-43mm-m3h2-3prc (a mitigation, not formal proof of no timing channel).
+- Login limit and the Argon2 computation gate: GHSA-w5fm-68j4-fpc4.
 
-Wpisy pozostają w rejestrze otwarte do czasu dopisania w nim odnośników do testów; część (np. timing) wymaga osobnego pomiaru.
+The final status of every advisory is in [SECURITY.md](SECURITY.md); some items (e.g. timing) need a separate measurement.
 
-## Znane kompromisy i otwarte punkty
+## Known trade-offs and open points
 
-- Każde uwierzytelnione żądanie zapisuje `LastSeen` z fsync — prosty i spójny model odwołania, ale limit wydajności. Do rozważenia: zapis co N sekund.
-- Obliczenie Argon2 przy reauth administratora odbywa się pod wyłączną blokadą `security` (krótko wstrzymuje commity innych użytkowników).
-- `Begin` zapisuje rekord (fsync) pod globalną blokadą serwisu, a każdy fragment wymaga dwóch fsync — prostota i poprawność kosztem przepustowości przy wielu równoległych uploadach.
-- Jeżeli po zapisaniu zmiany konta nie uda się zaktualizować polityki w pamięci, API zwraca błąd, a zmiana w bazie zostaje; polityka zostanie odtworzona z bazy po restarcie.
-- Za reverse proxy limit logowań jest wspólny dla adresu proxy.
+- Every authenticated request writes `LastSeen` with fsync — a simple and consistent revocation model, but a performance limit. To consider: writing every N seconds.
+- The Argon2 computation for administrator reauth runs under the exclusive `security` lock (briefly pausing other users' commits).
+- `Begin` writes the record (fsync) under the global service lock, and every chunk needs two fsyncs — simplicity and correctness at the cost of throughput with many parallel uploads.
+- If updating the in-memory policy fails after an account change was saved, the API returns an error and the change stays in the database; the policy is rebuilt from the database after a restart.
+- Behind a reverse proxy the login limit is shared by the proxy's address.
 
-## Etap 3 — trwałe i wznawialne uploady
+## Stage 3 — durable, resumable uploads
 
-Rekordy uploadów w `uploads.db` w state, odtwarzanie po restarcie i awarii, idempotentny commit i status wyniku publikacji. `Close` zachowuje uploady; `put` w CLI anuluje własny nieudany upload. Szczegóły i tabela odtwarzania: sekcje „Cykl uploadu” i „Awaria procesu i zasoby” w [CONTRACT.md](CONTRACT.md).
+Upload records in `uploads.db` in the state directory, recovery after a restart and a crash, an idempotent commit and publication result status. `Close` keeps uploads; the CLI `put` cancels its own failed upload. Details and the recovery table: sections "Upload lifecycle" and "Process crash and resources" in [CONTRACT.md](CONTRACT.md).
 
-| Kontrakt | Główne testy |
+| Contract | Main tests |
 |---|---|
-| Wznowienie po restarcie z zachowaniem właściciela i rezerwacji | `TestResumeAfterRestart`, `TestPatchIsDurableOnlyAfterRecord` |
-| Bajty bez zapisanego offsetu są odcinane; brak potwierdzonych bajtów unieważnia upload | `TestRecoveryTruncatesUnacknowledgedBytes`, `TestRecoveryDropsUploadWithMissingAcknowledgedBytes` |
-| Awaria w trakcie publikacji: przed i po `rename` | `TestCrashBeforeRenameRevertsToUploading`, `TestCrashAfterRenameIsReportedAsPublished` |
-| Idempotentny commit, prywatność i wygasanie wyników, limit liczby wyników | `TestPublicationResultSurvivesRestartAndExpires`, `TestResultsAreBounded`, `TestUploadPublishesOnlyAfterCompletion` |
-| Rekordy uszkodzone, wskazujące poza przestrzeń lub cudzy staging; osierocony i wygasły staging | `TestRecoveryDiscardsOrphansCorruptAndExpiredRecords` |
-| Baza nie może być symlinkiem | `TestDatabaseSymlinkIsRejected` |
-| HTTP: wznowienie po restarcie całego procesu (to samo cookie), podwójny commit, brak anulowania po publikacji | `TestUploadResumesAcrossRestartAndCommitIsIdempotent` |
-| CLI nie zostawia stagingu po konflikcie | `TestOperatorCLI` |
+| Resume after a restart, keeping the owner and the reservation | `TestResumeAfterRestart`, `TestPatchIsDurableOnlyAfterRecord` |
+| Bytes without a stored offset are cut off; missing confirmed bytes invalidate the upload | `TestRecoveryTruncatesUnacknowledgedBytes`, `TestRecoveryDropsUploadWithMissingAcknowledgedBytes` |
+| Crash during publication: before and after `rename` | `TestCrashBeforeRenameRevertsToUploading`, `TestCrashAfterRenameIsReportedAsPublished` |
+| Idempotent commit, privacy and expiry of results, bounded number of results | `TestPublicationResultSurvivesRestartAndExpires`, `TestResultsAreBounded`, `TestUploadPublishesOnlyAfterCompletion` |
+| Corrupt records, records pointing outside the space or to foreign staging; orphaned and expired staging | `TestRecoveryDiscardsOrphansCorruptAndExpiredRecords` |
+| The database cannot be a symlink | `TestDatabaseSymlinkIsRejected` |
+| HTTP: resume after restarting the whole process (same cookie), double commit, no cancellation after publication | `TestUploadResumesAcrossRestartAndCommitIsIdempotent` |
+| The CLI leaves no staging after a conflict | `TestOperatorCLI` |
 
-Weryfikacja: `go test`, `go vet`, `gofmt`; `go test -race -count=3` w `golang:1.27.1-bookworm` bez sieci; fuzzing ścieżek 10 s. Test end-to-end binarki: upload 5/10 B, **`kill -9` serwera**, restart, `GET` statusu tym samym cookie → offset 5, dokończenie, dwukrotny commit → za każdym razem `published: true, durability_confirmed: true`, status `published`, w state zostają tylko bazy. Awarie w środku operacji testowane są przez odtworzenie stanu dysku (dopisane bajty, rekord `publishing` z/bez stagingu) — nie przez faktyczne wyłączenie zasilania; to wymagałoby testów na maszynie wirtualnej z utratą cache dysku.
+Verification: `go test`, `go vet`, `gofmt`; `go test -race -count=3` in `golang:1.27.1-bookworm` without network; path fuzzing for 10 s. End-to-end test of the binary: upload 5/10 B, **`kill -9` of the server**, restart, status `GET` with the same cookie → offset 5, completion, commit twice → both times `published: true, durability_confirmed: true`, status `published`, only the databases remain in the state. Crashes in the middle of operations are tested by recreating the disk state (appended bytes, a `publishing` record with/without staging) — not by actually cutting the power; that would need tests on a virtual machine with disk cache loss.
 
-### Co etap 3 adresuje
+### What stage 3 addresses
 
-Rejestr GHSA nie zawiera osobnych zgłoszeń o utracie danych po restarcie; etap zamyka natomiast ryzyka z analizy projektu: ponowienie żądania po zgubionej odpowiedzi nie powoduje drugiej publikacji ani konfliktu mylonego z błędem, awaria nie zostawia pliku częściowego pod nazwą docelową, a sprzątanie po restarcie nadal nie dotyka niczego poza rozpoznanym stagingiem bez rekordu (klasa GHSA-c4fr-5f24-4wrj / GHSA-fmm7-x4gx-8jhr zostaje zachowana).
+The GHSA register has no separate reports about data loss after a restart; this stage instead closes risks from the design analysis: repeating a request after a lost response causes no second publication and no conflict mistaken for an error, a crash leaves no partial file under the target name, and cleanup after a restart still touches nothing but recognised staging without a record (the GHSA-c4fr-5f24-4wrj / GHSA-fmm7-x4gx-8jhr class is preserved).
 
-## Etap 4 — interfejs WWW i Docker Compose
+## Stage 4 — web interface and Docker Compose
 
-Pakiet `internal/web` (HTML/CSS/JS osadzone w binarce, bez frameworka i kroku budowania), endpoint `POST /api/folders`, limity uploadu w `/api/auth/me`, konfiguracja przez `FILEDECK_*`, tryb `-tls-self-signed`, `compose.yaml` + `.env.example`, obraz z gotowym układem `/data`. Szczegóły: sekcje „Interfejs WWW” i „Wdrożenie w Dockerze” w [CONTRACT.md](CONTRACT.md).
+Package `internal/web` (HTML/CSS/JS embedded in the binary, no framework and no build step), endpoint `POST /api/folders`, upload limits in `/api/auth/me`, configuration through `FILEDECK_*`, `-tls-self-signed` mode, `compose.yaml` + `.env.example`, an image with a ready `/data` layout. Details: sections "Web interface" and "Docker deployment" in [CONTRACT.md](CONTRACT.md).
 
-Interfejs: logowanie, nawigacja po folderach z okruszkami i adresem w `#/ścieżka`, pobieranie, tworzenie folderów, upload wielu plików (wybór lub przeciągnięcie) z postępem, wznawianiem i ponawianiem, zmiana hasła, panel administratora (tworzenie kont, uprawnienia, blokada, reset hasła — każda zmiana z ponownym podaniem hasła). Kontrolki zapisu są ukryte dla kont bez Create; serwer i tak odrzuca takie żądania.
+Interface: login, folder navigation with breadcrumbs and the address in `#/path`, download, folder creation, multi-file upload (picker or drag) with progress, resume and retry, password change, administrator panel (creating accounts, permissions, disabling, password reset — every change with the password re-entered). Write controls are hidden for accounts without Create; the server rejects such requests anyway.
 
-| Kontrakt | Test |
+| Contract | Test |
 |---|---|
-| Nagłówki strony (CSP bez `unsafe`, Trusted Types), brak dostępu do plików spoza listy zasobów, cross-site tylko dla UI, limity w `/me`, foldery przez HTTP z CSRF i uprawnieniami | `TestInterfaceHeadersAndFolders` |
-| `mkdirat` bez symlinków, bez tworzenia pośrednich katalogów, bez zastępowania, wymaga Create | `TestMkdirIsBoundedAndNeverReplaces` |
-| Certyfikat self-signed: ponowne użycie, związanie z hostem/IP, tryb 0600, odmowa dla `http` | `TestSelfSignedCertificateIsReusedAndBoundToHost` |
-| Przeglądarka end-to-end (Chromium) na kontenerze z compose | `test/ui/smoke.mjs` |
+| Page headers (CSP without `unsafe`, Trusted Types), no access to files outside the asset list, cross-site only for the UI, limits in `/me`, folders over HTTP with CSRF and permissions | `TestInterfaceHeadersAndFolders` |
+| `mkdirat` without symlinks, without creating intermediate directories, without replacing, requires Create | `TestMkdirIsBoundedAndNeverReplaces` |
+| Self-signed certificate: reuse, bound to host/IP, mode 0600, refused for `http` | `TestSelfSignedCertificateIsReusedAndBoundToHost` |
+| End-to-end browser test (Chromium) against a compose container | `test/ui/smoke.mjs` |
 
-Weryfikacja: testy Go, `go vet`, `gofmt`, `go test -race -count=2` i fuzzing w `golang:1.27.1-bookworm`; `node --check` dla JS. Obraz `filedeck:local` ma 11,8 MB. Scenariusze Docker Compose na osobnych projektach (usunięte po teście):
+Verification: Go tests, `go vet`, `gofmt`, `go test -race -count=2` and fuzzing in `golang:1.27.1-bookworm`; `node --check` for the JS. The `filedeck:local` image is 11.8 MB. Docker Compose scenarios on separate projects (removed after the test):
 
-- wolumen nazwany: start bez administratora kończy się instrukcją, `docker compose run --rm -T filedeck bootstrap admin`, start z certyfikatem self-signed, HTTPS, cookie `__Host-filedeck`, obcy `Host` → 421;
-- bind mount istniejącego katalogu hosta z `FILEDECK_USER` = UID hosta: widoczne istniejące pliki, nowe tworzone z właścicielem z hosta, state 0600;
-- Chromium (Playwright): złe hasło, logowanie, tworzenie folderów, upload 20 MiB w 3 fragmentach, plik o nazwie `<img src=x onerror=alert(1)>.txt` wyświetlony jako tekst (brak wstrzykniętego HTML i okna dialogowego), pobranie 20 971 520 B, konflikt bez nadpisania, utworzenie konta wymagające reauth, konto tylko do odczytu bez kontrolek zapisu, przeładowanie z zachowaniem sesji i folderu, wylogowanie — **zero błędów konsoli i naruszeń CSP**.
+- named volume: starting without an administrator ends with instructions, `docker compose run --rm -T filedeck bootstrap admin`, start with a self-signed certificate, HTTPS, `__Host-filedeck` cookie, foreign `Host` → 421;
+- bind mount of an existing host directory with `FILEDECK_USER` = host UID: existing files visible, new ones created with the host owner, state 0600;
+- Chromium (Playwright): wrong password, login, folder creation, 20 MiB upload in 3 chunks, a file named `<img src=x onerror=alert(1)>.txt` shown as text (no injected HTML and no dialog), download of 20,971,520 B, conflict without overwrite, account creation requiring reauth, read-only account without write controls, reload keeping the session and folder, logout — **zero console errors and CSP violations**.
 
-Nie testowano: Firefox/Safari, urządzenia mobilne, prawdziwy reverse proxy, wznowienie uploadu po przeładowaniu strony w przeglądarce (logika jest, test automatyczny obejmuje wznawianie na poziomie API).
+Not tested: Firefox/Safari, mobile devices, a real reverse proxy, resuming an upload after a page reload in the browser (the logic exists; the automated test covers resuming at the API level).
 
-**Poprawka po pierwszym wdrożeniu (2026-09-28):** pierwsze uruchomienie przez `docker compose run … bootstrap` okazało się kruche — kontener bez administratora restartował się w pętli i blokował state, a port domyślnie słuchał tylko na `127.0.0.1`. Dodano tryb konfiguracji z jednorazowym kodem w logach (`TestFirstRunSetupCodeCreatesAdministratorOnce`, test Chromium ekranu konfiguracji: zły kod odrzucony, poprawny tworzy konto i loguje, po przeładowaniu brak ekranu konfiguracji) oraz jaśniejszą instrukcję dostępu z LAN (`FILEDECK_BIND`, `FILEDECK_ORIGIN`, `https://`).
+**Fix after the first deployment (2026-09-28):** the first start through `docker compose run … bootstrap` turned out to be fragile — a container without an administrator restarted in a loop and locked the state, and the port listened only on `127.0.0.1` by default. Added a setup mode with a one-time code in the log (`TestFirstRunSetupCodeCreatesAdministratorOnce`, a Chromium test of the setup screen: a wrong code rejected, the correct one creates the account and signs in, no setup screen after a reload) and clearer instructions for LAN access (`FILEDECK_BIND`, `FILEDECK_ORIGIN`, `https://`).
 
-### Co etap 4 adresuje w rejestrze GHSA
+### What stage 4 addresses in the GHSA register
 
-Klasa XSS i aktywnej treści (sekcja „Limity wejścia/wyjścia… izolacja aktywnej treści”): interfejs nie ma podglądu ani renderowania plików, treść zawsze idzie jako załącznik z `sandbox`, a nazwy plików nie mogą stać się HTML dzięki Trusted Types. Wpisy pozostają otwarte w rejestrze do czasu dopisania odnośników.
+The XSS and active content class (section "Input/output limits… isolation of active content"): the interface has no preview or rendering of files, content always goes out as an attachment with `sandbox`, and file names cannot become HTML thanks to Trusted Types.
 
-## Etap 5 — przestrzenie, zmiana nazwy i kosz
+## Stage 5 — spaces, rename and trash
 
-Decyzje (2026-09-28): serwer sam montuje udziały, Filedeck dostaje katalogi przez mapowanie w compose; obok nich własna przestrzeń kontenera „Moje pliki”; usuwanie do kosza. Szczegóły: sekcje „Przestrzenie i katalog `.filedeck`” oraz „Zmiana nazwy i kosz” w [CONTRACT.md](CONTRACT.md).
+Decisions (2026-09-28): the server mounts shares itself and Filedeck receives directories through compose mappings; next to them, the container's own "My files" space; deletion goes to the trash. Details: sections "Spaces and the `.filedeck` directory" and "Rename and trash" in [CONTRACT.md](CONTRACT.md).
 
-Zmiana architektury: staging przeniesiony ze state do ukrytego `.filedeck/` każdej przestrzeni (publikacja i kosz muszą być jednym `rename` na tym samym systemie plików, a przestrzenie leżą na różnych mountach). Zniknął wymóg „state i pliki na jednym mouncie”. State zawiera tylko bazy i certyfikat. Dodano: wiele przestrzeni (`/files` + wykrywane `/spaces/*`), przestrzenie tylko do odczytu, uprawnienia per przestrzeń z `*`, prawo Modify, zmiana nazwy, kosz z przywracaniem i retencją, trwałe usuwanie tylko przez administratora, tryby nowych plików/folderów (`0640`/`0750`), `healthcheck` i `HEALTHCHECK` w obrazie, `compose.override.example.yaml`, log wykrytych przestrzeni, migracja kont i rekordów ze starszego formatu.
+Architecture change: staging moved from the state into the hidden `.filedeck/` of each space (publication and trash must be a single `rename` on the same filesystem, and spaces live on different mounts). The "state and files on one mount" requirement is gone. The state holds only the databases and the certificate. Added: multiple spaces (`/files` + detected `/spaces/*`), read-only spaces, per-space permissions with `*`, the Modify permission, rename, trash with restore and retention, permanent deletion by administrators only, modes of new files/folders (`0640`/`0750`), `healthcheck` and `HEALTHCHECK` in the image, `compose.override.example.yaml`, a log of detected spaces, migration of accounts and records from the older format.
 
-| Kontrakt | Test |
+| Contract | Test |
 |---|---|
-| `.filedeck` ukryty i nieosiągalny — nazwy, warianty wielkości liter, końcowe kropki, Kelvin sign, alias po inode | `TestPathContract`, `TestMetadataDirectoryIsHiddenAndUnreachable` |
-| Odrzucenie `.filedeck` zapisywalnego dla wszystkich, będącego symlinkiem, root-symlinku, złych trybów | `TestUnsafeMetadataDirectoryIsRejected` |
-| Przestrzeń tylko do odczytu | `TestReadOnlySpace`, `TestReadOnlySpaceAndStatePlacement` |
-| State prywatny, blokowany, rozłączny z przestrzeniami, sprzątanie starego stagingu | `TestStateIsPrivateLockedAndDisjoint` |
-| Tryby nowych folderów, prywatny `.filedeck` | `TestMkdirUsesConfiguredMode` |
-| Zmiana nazwy bez nadpisywania, bez ucieczki przez symlink, bez wejścia do `.filedeck`, bez symlinków jako źródła | `TestRenameNeverReplacesOrEscapes`, `TestRenameRequiresModify` |
-| Kosz, przywracanie bez nadpisywania, trwałe usuwanie bez podążania za symlinkiem | `TestTrashRestoreAndPurge`, `TestTrashLifecycle` |
-| Odtwarzanie kosza po awarii (rekord bez elementu, element bez rekordu), retencja | `TestTrashRecoveryAndRetention` |
-| Uprawnienia per przestrzeń, `*`, izolacja ścieżek, cofnięcie Create blokuje publikację | `TestPermissionsArePerSpace` |
-| Migracja starego formatu uprawnień | `TestLegacyPermissionsBecomeAllSpacesGrant` |
-| HTTP: przestrzenie, zmiana nazwy, kosz, purge tylko admin, walidacja grantów | `TestSpacesRenameAndTrashOverHTTP` |
-| `/healthz` tylko z loopback; wykrywanie przestrzeni | `TestHealthzIsLoopbackOnly`, `TestDiscoverSpaces` |
+| `.filedeck` hidden and unreachable — names, letter-case variants, trailing dots, Kelvin sign, alias by inode | `TestPathContract`, `TestMetadataDirectoryIsHiddenAndUnreachable` |
+| Rejecting a world-writable `.filedeck`, a symlinked one, a root symlink, wrong modes | `TestUnsafeMetadataDirectoryIsRejected` |
+| Read-only space | `TestReadOnlySpace`, `TestReadOnlySpaceAndStatePlacement` |
+| State private, locked, disjoint from spaces, cleanup of old staging | `TestStateIsPrivateLockedAndDisjoint` |
+| Modes of new folders, private `.filedeck` | `TestMkdirUsesConfiguredMode` |
+| Rename without overwriting, without escaping through a symlink, without entering `.filedeck`, without symlinks as the source | `TestRenameNeverReplacesOrEscapes`, `TestRenameRequiresModify` |
+| Trash, restore without overwriting, permanent deletion without following symlinks | `TestTrashRestoreAndPurge`, `TestTrashLifecycle` |
+| Trash recovery after a crash (record without item, item without record), retention | `TestTrashRecoveryAndRetention` |
+| Per-space permissions, `*`, path isolation, revoking Create blocks publication | `TestPermissionsArePerSpace` |
+| Migration of the old permission format | `TestLegacyPermissionsBecomeAllSpacesGrant` |
+| HTTP: spaces, rename, trash, purge by administrators only, grant validation | `TestSpacesRenameAndTrashOverHTTP` |
+| `/healthz` from loopback only; space discovery | `TestHealthzIsLoopbackOnly`, `TestDiscoverSpaces` |
 
-Weryfikacja: testy Go, `go vet`, `gofmt`; `go test -race -count=3` i fuzzing w `golang:1.27.1-bookworm` (race detector wykrył i pozwolił naprawić niezsynchronizowany odczyt przestrzeni uploadu w `Patch`/`Status`). Compose z dwiema przestrzeniami z hosta (`nas` zapisywalna — katalog należący do UID kontenera, `archiwum` jako `:ro`) i Chromium: foldery, upload 20 MiB, nazwa-pułapka XSS, pobranie, konflikt, zmiana nazwy, kosz → przywrócenie, kosz → trwałe usunięcie, upload do `nas` (plik na hoście z trybem `0640`, `.filedeck` `0700`, niewidoczny w UI), `archiwum` ze znacznikiem i bez kontrolek zapisu, konto z grantami tylko do „Moje pliki” i `nas` (nie widzi `archiwum`, brak kontrolek zapisu i usuwania), healthcheck `healthy` — **zero błędów konsoli i CSP**. Test znalazł błąd UX (domyślnie otwierała się pierwsza alfabetycznie przestrzeń, tu tylko do odczytu) — poprawiony.
+Verification: Go tests, `go vet`, `gofmt`; `go test -race -count=3` and fuzzing in `golang:1.27.1-bookworm` (the race detector found an unsynchronized read of the upload's space in `Patch`/`Status`, now fixed). Compose with two host spaces (`nas` writable — a directory owned by the container UID, `archiwum` as `:ro`) and Chromium: folders, 20 MiB upload, XSS trap name, download, conflict, rename, trash → restore, trash → permanent deletion, upload into `nas` (file on the host with mode `0640`, `.filedeck` `0700`, invisible in the UI), `archiwum` marked and without write controls, an account with grants only for "My files" and `nas` (does not see `archiwum`, no write or delete controls), healthcheck `healthy` — **zero console and CSP errors**. The test found a UX bug (the alphabetically first space opened by default, here a read-only one) — fixed.
 
-Nie testowano: prawdziwy udział SMB/CIFS i NFS, serwer Samba z nazwami 8.3, bardzo duże drzewa w koszu.
+Not tested: a real SMB/CIFS and NFS share, a Samba server with 8.3 names, very large trees in the trash.
 
-**Poprawka po wdrożeniu (2026-09-28):** zmiana `FILEDECK_USER` przy nowych wolumenach kończyła się `permission denied`, bo Docker kopiował do wolumenów katalogi z obrazu należące do UID 65532. Teraz obraz zawiera tylko puste punkty montowania `1777`, a Filedeck sam tworzy `state` i własną przestrzeń jako faktyczny UID (`TestFirstStartCreatesPrivateDirectories`; sprawdzone w compose dla UID 1001 i 65532).
+**Fix after deployment (2026-09-28):** changing `FILEDECK_USER` with new volumes ended with `permission denied`, because Docker copied directories from the image owned by UID 65532 into the volumes. Now the image contains only empty `1777` mount points, and Filedeck itself creates the state and its own space as the actual UID (`TestFirstStartCreatesPrivateDirectories`; checked in compose for UID 1001 and 65532).
 
-### Co etap 5 adresuje w rejestrze GHSA
+### What stage 5 addresses in the GHSA register
 
-- Usuwanie bez uprawnień / przez błędy ścieżek: zmiana nazwy i kosz wymagają osobnego Modify, idą przez `RENAME_NOREPLACE` i te same kontrole ścieżki co reszta; trwałe usuwanie wyłącznie z kosza i tylko przez administratora (klasa GHSA-c4fr-5f24-4wrj / GHSA-fmm7-x4gx-8jhr rozszerzona na nowe operacje).
-- Symlinki przy operacjach na drzewach: źródła-symlinki odrzucane, purge nie podąża za symlinkami ani nie przekracza montowań (klasy GHSA-239w-m3h6-ch8v, GHSA-8wc8-hf36-mjh9, GHSA-7w29-q235-57m9).
-- Aliasowanie nazw na systemach niewrażliwych na wielkość liter (klasa GHSA-576v-w77m-gr84): katalog metadanych chroniony po nazwie z case-folding i po inode.
-- Zakres użytkownika: brak „scope = root serwera”; każda przestrzeń wymaga jawnego grantu, nowa przestrzeń nie jest nikomu udostępniana poza `*` (klasa GHSA-6759-996p-gpj6, GHSA-j7jh-37pf-mf8h).
+- Deletion without permission / through path bugs: rename and trash require a separate Modify, go through `RENAME_NOREPLACE` and the same path checks as everything else; permanent deletion only from the trash and only by administrators (class GHSA-c4fr-5f24-4wrj / GHSA-fmm7-x4gx-8jhr extended to the new operations).
+- Symlinks in tree operations: symlink sources rejected, purge does not follow symlinks or cross mounts (classes GHSA-239w-m3h6-ch8v, GHSA-8wc8-hf36-mjh9, GHSA-7w29-q235-57m9).
+- Name aliasing on case-insensitive systems (class GHSA-576v-w77m-gr84): the metadata directory is protected by name with case-folding and by inode.
+- User scope: no "scope = server root"; every space requires an explicit grant, a new space is not shared with anyone except through `*` (class GHSA-6759-996p-gpj6, GHSA-j7jh-37pf-mf8h).
 
-## Etap 6 — podgląd, edytor, kopiowanie, motyw i przegląd bezpieczeństwa
+## Stage 6 — preview, editor, copy, theme and security review
 
-Zrealizowano: drag & drop na całe okno i na wiersz folderu (przeglądarka nie otwiera już upuszczonych plików); podgląd zdjęć, wideo, audio, PDF i tekstu z przechodzeniem ←/→; edytor plików tekstowych (Ctrl+S, znacznik niezapisanych zmian, konflikt wersji → „zapisz jako”, poprzednia wersja w koszu); „Nowy plik”; kopiowanie i przenoszenie między przestrzeniami w tle z postępem i anulowaniem; przełącznik motywu auto/jasny/ciemny z nową paletą jasną; ikony Tabler (offline). Szczegóły: sekcja „Podgląd, edytor i kopiowanie” w [CONTRACT.md](CONTRACT.md).
+Done: drag & drop onto the whole window and onto a folder row (the browser no longer opens dropped files); preview of photos, video, audio, PDF and text with ←/→ navigation; a text editor (Ctrl+S, unsaved-changes marker, version conflict → "save as", previous version in the trash); "New file"; background copy and move between spaces with progress and cancellation; an auto/light/dark theme switch with a new light palette; Tabler icons (offline). Details: section "Preview, editor and copy" in [CONTRACT.md](CONTRACT.md).
 
-**Przegląd bezpieczeństwa:** wszystkie 62 advisory File Browser przypisane do statusu z dowodem — [SECURITY.md](SECURITY.md): 38 zaadresowanych z testami, 23 nie dotyczy (brak funkcji: udostępnianie, polecenia/hooki, archiwa), 1 częściowo (enumeracja kont przez czas). Znalezione i naprawione: limit pamięci dla zapisów edytora, rezerwa wolnego miejsca (upload/zapis/kopia), wczesne odrzucanie celów w `.filedeck`. Nowe testy regresji: `TestAdvisoryRegressions`, `TestUsernamesCannotCollideByCaseOrUnicode`, `TestFreeSpaceReserve`, `TestNoProcessExecutionOrPlugins` (brak `os/exec`, pluginów, szablonów).
+**Security review:** all 62 File Browser advisories assigned a status with evidence — [SECURITY.md](SECURITY.md): 38 addressed with tests, 23 not applicable (missing features: sharing, commands/hooks, archives), 1 partial (account enumeration through timing). Found and fixed: a memory limit for editor saves, a free-space reserve (upload/save/copy), early rejection of targets in `.filedeck`. New regression tests: `TestAdvisoryRegressions`, `TestUsernamesCannotCollideByCaseOrUnicode`, `TestFreeSpaceReserve`, `TestNoProcessExecutionOrPlugins` (no `os/exec`, plugins, templates).
 
-| Kontrakt | Test |
+| Contract | Test |
 |---|---|
-| Zapis tekstu: wersja, konflikt, poprzednia wersja w koszu, tryb, uprawnienia | `TestTextEditorSavesSafely` |
-| Odrzucanie binariów, złego UTF-8, za dużych plików, symlinków, katalogów, `.filedeck` | `TestTextEditorRejectsUnsuitableFiles` |
-| Podgląd: typy, nagłówki, SVG w piaskownicy, HTML nie inline, Range | `TestPreviewAndTextEditorOverHTTP` |
-| Kopia drzewa: pomijanie symlinków/FIFO, tryby, limity, anulowanie, sprzątanie | `TestCopyTreeBetweenSpaces` |
-| Kopiowanie/przenoszenie między przestrzeniami, uprawnienia, izolacja zadań | `TestCopyAndMoveBetweenSpaces`, `TestTransfersOverHTTP` |
+| Text save: version, conflict, previous version in the trash, mode, permissions | `TestTextEditorSavesSafely` |
+| Rejecting binaries, invalid UTF-8, oversized files, symlinks, directories, `.filedeck` | `TestTextEditorRejectsUnsuitableFiles` |
+| Preview: types, headers, sandboxed SVG, HTML not inline, Range | `TestPreviewAndTextEditorOverHTTP` |
+| Tree copy: skipping symlinks/FIFOs, modes, limits, cancellation, cleanup | `TestCopyTreeBetweenSpaces` |
+| Copy/move between spaces, permissions, job isolation | `TestCopyAndMoveBetweenSpaces`, `TestTransfersOverHTTP` |
 
-Weryfikacja: testy Go, `go vet`, `staticcheck` (czysto), `govulncheck`, race detector ×3, fuzzing; Chromium: motyw (zapamiętany po przeładowaniu), drag & drop na okno i folder, podgląd SVG ze skryptem i tekstu, edycja + konflikt → zapis jako kopia, kopiowanie i przenoszenie do przestrzeni z hosta — bez błędów konsoli i CSP. Wdrożone na instancji użytkownika.
+Verification: Go tests, `go vet`, `staticcheck` (clean), `govulncheck`, race detector ×3, fuzzing; Chromium: theme (remembered after reload), drag & drop onto the window and a folder, preview of an SVG with a script and of text, edit + conflict → save as a copy, copy and move to a host space — no console or CSP errors. Deployed on the user's instance.
 
-## Etap 7 — język, powiadomienia, zaznaczanie, foldery
+## Stage 7 — language, notifications, selection, folders
 
-Na podstawie testów użytkownika:
-- **Wysyłanie folderów** — przycisk „Upload folder” i przeciągnięcie folderu; struktura podfolderów odtwarzana poziom po poziomie (istniejące foldery są używane), limit 10 000 plików naraz.
-- **Powiadomienia zamiast sekcji pod tabelą** — krótkie komunikaty znikające po 4–8 s (maks. 3 naraz, żeby nie zasłaniały strony) i dzwonek w górnym pasku z historią ostatnich 40 operacji (upload, kopiowanie/przenoszenie, zmiana nazwy, kosz, przywracanie, zapis, foldery) ze statusem i postępem. Zadania zakończone przed przeładowaniem strony trafiają do historii bez ponownego komunikatu.
-- **Język** — angielski domyślny, przełącznik EN/PL (zapamiętany); słowniki `lang-en.json`/`lang-pl.json`, `TestTranslations` wymusza kompletność (klucze, zmienne, klucze użyte w HTML/JS, kody błędów API — test od razu znalazł 3 nieprzetłumaczone kody).
-- **Akcje w wierszach jako ikony z dymkami**; zmiana nazwy ma ikonę pola tekstowego (`forms`).
-- **Zaznaczanie** — przycisk trybu zaznaczania, pola wyboru, „zaznacz wszystko”, Ctrl/Cmd+klik, Shift+klik (zakres), Esc; pasek akcji zbiorczych: kopiuj/przenieś (do folderu docelowego) i do kosza. Serwer przyjmuje jedno zadanie z listą do 1000 par źródło→cel (`TestMultiItemTransfer`).
+Based on the user's testing:
+- **Folder upload** — an "Upload folder" button and dragging a folder; the subfolder structure is recreated level by level (existing folders are reused), a limit of 10,000 files at once.
+- **Notifications instead of sections under the table** — short messages disappearing after 4–8 s (max. 3 at a time, so they do not cover the page) and a bell in the top bar with a history of the last 40 operations (upload, copy/move, rename, trash, restore, save, folders) with status and progress. Jobs finished before a page reload go into the history without a repeated message.
+- **Language** — English by default, EN/PL switch (remembered); dictionaries `lang-en.json`/`lang-pl.json`, `TestTranslations` enforces completeness (keys, placeholders, keys used in HTML/JS, API error codes — the test immediately found 3 untranslated codes).
+- **Row actions as icons with tooltips**; rename has a text-field icon (`forms`).
+- **Selection** — a selection mode button, checkboxes, "select all", Ctrl/Cmd+click, Shift+click (range), Esc; a bulk action bar: copy/move (to a target folder) and trash. The server accepts one job with a list of up to 1000 source→target pairs (`TestMultiItemTransfer`).
 
-Weryfikacja: testy Go z race detectorem, `TestTranslations`; Chromium (22 kroki, w tym angielski domyślny, historia pod dzwonkiem, maks. 3 komunikaty, wysyłanie drzewa folderów, zaznaczanie z Ctrl, przeniesienie zbiorcze, kosz zbiorczy, przełączenie na PL i zapamiętanie) — bez błędów konsoli i CSP. Wdrożone.
+Verification: Go tests with the race detector, `TestTranslations`; Chromium (22 steps, including English by default, the history under the bell, max. 3 messages, uploading a folder tree, selection with Ctrl, bulk move, bulk trash, switching to PL and remembering it) — no console or CSP errors. Deployed.
 
-## Etap 8 — poprawka reauth, test udziałów, sortowanie i wyszukiwanie
+## Stage 8 — reauth fix, share test, sorting and search
 
-- **Błąd:** błędne hasło administratora przy tworzeniu konta (i błędne obecne hasło przy zmianie hasła) zwracało 401, które interfejs traktował jak wygaśnięcie sesji — użytkownik widział ekran logowania, choć sesja była ważna. Teraz 403 `wrong_password` z komunikatem „Wrong password” (`TestWrongPasswordKeepsSession`, krok w teście przeglądarkowym).
-- **Test SMB:** próba z serwerem Samba w kontenerze i klientem CIFS jądra nie powiodła się z powodu środowiska — na tym hoście (LXC) montowanie CIFS jest niedozwolone nawet dla kontenera uprzywilejowanego. Zamiast tego podkomenda **`filedeck selftest DIR`** sprawdza na dowolnym podmontowanym katalogu wszystkie wymagane właściwości (`TestSelftestPassesOnLocalDirectory`). Wniosek dla wdrożenia na LXC: udział trzeba zamontować na hoście maszyn wirtualnych i przekazać jako katalog.
-- **Wygoda przeglądania:** sortowanie po nazwie, rozmiarze i dacie modyfikacji (zapamiętane, `aria-sort`), kolumna daty, pobieranie zaznaczonych plików po kolei (bez archiwów ZIP — SECURITY.md).
-- **Wyszukiwanie** po nazwie poniżej bieżącego folderu z limitami; wynik otwiera folder pliku i podgląd (`TestSearchIsBoundedAndStaysInside`, `TestSearchOverHTTP`).
+- **Bug:** a wrong administrator password when creating an account (and a wrong current password when changing a password) returned 401, which the interface treated as an expired session — the user saw the login screen although the session was valid. Now 403 `wrong_password` with a "Wrong password" message (`TestWrongPasswordKeepsSession`, a step in the browser test).
+- **SMB test:** an attempt with a Samba server in a container and the kernel CIFS client failed because of the environment — on this host (LXC) CIFS mounts are not allowed even for a privileged container. Instead, the **`filedeck selftest DIR`** subcommand checks all required properties on any mounted directory (`TestSelftestPassesOnLocalDirectory`). Conclusion for LXC deployments: the share must be mounted on the virtualization host and passed in as a directory.
+- **Browsing convenience:** sorting by name, size and modification date (remembered, `aria-sort`), a date column, downloading selected files one after another (no ZIP archives — see SECURITY.md).
+- **Search** by name below the current folder with limits; a result opens the file's folder and preview (`TestSearchIsBoundedAndStaysInside`, `TestSearchOverHTTP`).
 
-Weryfikacja: testy Go (w kontenerze `golang` z limitami pamięci — twardy reset serwera przerwał poprzedni przebieg), Chromium 24 kroki bez błędów konsoli i CSP (gotowy obraz Playwright, limit 2 GB). Wdrożone.
+Verification: Go tests (in the `golang` container with memory limits — a hard reset of the server interrupted the previous run), Chromium 24 steps without console or CSP errors (prebuilt Playwright image, 2 GB limit). Deployed.
 
-## Znane ograniczenia
+## Stage 9 — public links
 
-- Brak publicznych linków; wyszukiwanie tylko po nazwie (bez treści); historia operacji żyje w karcie przeglądarki (nie w serwerze).
-- `.filedeck` jest widoczny dla użytkowników SMB tej samej przestrzeni (zalecane `veto files`).
-- Kosz zajmuje miejsce do końca retencji; brak limitu jego rozmiaru.
-- Każde uwierzytelnione żądanie zapisuje `LastSeen` z fsync; `Begin` zapisuje rekord pod globalną blokadą.
+Sharing a file or folder with people without an account: a "Share link" icon in the row, a choice of validity (1 hour – 1 year) and an optional password, the link shown once with a copy button; a "Shared links" view with the list, state (active / not working) and revocation, and every user's links for administrators. Public page: a file with a download button or a folder with navigation and downloads, a password screen, a message for an unavailable link, EN/PL and theme. Details: section "Public links" in [CONTRACT.md](CONTRACT.md).
 
-## Następny etap (propozycja)
+Model derived from the 12 sharing advisories: a link points to an **object** (device, inode, birth time), not a path; every request checks expiry, the owner's permissions and the object identity; revoking permissions deletes links; the token is stored only as a hash, the password as Argon2id, and it never returns in the API. All 12 entries in [SECURITY.md](SECURITY.md) changed status from "not applicable" to "addressed" (in total 50 ✅, 11 🚫, 1 ⚠️).
 
-1. `selftest` na prawdziwym udziale SMB użytkownika — potem deklaracja wsparcia.
-3. Publiczne linki — według wymagań zebranych w SECURITY.md.
-4. Wdrożenie za docelowym reverse proxy (bez osobnego profilu Caddy — decyzja użytkownika).
+| Contract | Test |
+|---|---|
+| Object identity: rename, replacement, symlink under the old name, `.filedeck` | `TestObjectIdentityFollowsTheObjectNotThePath` |
+| Folder: reads only below the handle, symlinks, `..`, a moved `.filedeck` | `TestDirectoryObjectStaysBeneathItself` |
+| Validation, permissions, password, ownership, no secrets in the database | `TestPublicLinks` |
+| Rename, trash, losing List, account disable, expiry | `TestPublicLinkStopsWorking` |
+| HTTP: page, download, traversal, password and cookie, list without secrets, revocation, origin boundaries | `TestPublicLinksOverHTTP` |
+| Password attempt limit | `TestLinkPasswordAttemptsAreLimited` |
+| A download longer than the request limit | `TestSlowDownloadIsNotCutOff` |
 
-Prototyp jest fundamentem do dalszej implementacji, nie gotowym zamiennikiem produkcyjnego File Browser.
+**Bug found along the way:** every download (also for signed-in users) was interrupted after about 60 s by a fixed write deadline — a large file on a slower connection broke off. Now the deadline moves forward with every chunk sent. The test reproduces the bug (without the fix it cuts 4 MiB off at ~3.9 MiB).
+
+Verification: Go tests with the race detector, `TestTranslations` (extended to the public page and all API files), Chromium 23 steps on an instance without host spaces (new: a password-protected folder and a file without a password opened without an account, download, revocation, rename ends the link, state in the list) — no console or CSP errors. Also fixed two flaky test steps (search racing with navigation, a message from a previous upload) and the row layout in the trash. Tabler icons: `share` (share), `link` (link list), `link-off` (revoke), `lock` (password).
+
+## Release preparation
+
+The local server configuration (a space from a host directory) moved from `compose.yaml` to the git-ignored `compose.override.yaml` — the effective configuration of the instance is unchanged (compared with `docker compose config`). `.gitignore` covers `.env`, the override, `reference/`, the binary, test artifacts and editor files; `.dockerignore` lets only the code into the build. Workflow `release.yml`: images only from a published release, channels `main` (tag `X.Y.Z` → image `X.Y.Z`, `latest`) and `dev` (tag `devX.Y.Z` → image `devX.Y.Z`, `dev_latest`), images for `linux/amd64` and `linux/arm64` through cross-compilation (checked locally: image and binary architecture), with checks of the branch, format, pre-release, no overwriting of versions and moving tags only moving forward; the planning logic was checked by a simulation on a local repository (correct releases, a tag from another branch, a wrong format, a pre-release on `main`, an older version). The workflow has not run in GitHub Actions yet. All documentation is now in English only (see `AGENTS.md`).
+
+## Known limitations
+
+- Public links are read-only (no uploads through a link); search by name only (not by content); the operation history lives in the browser tab (not on the server).
+- `.filedeck` is visible to SMB users of the same space (`veto files` recommended).
+- The trash takes space until the end of retention; there is no limit on its size.
+- Every authenticated request writes `LastSeen` with fsync; `Begin` writes the record under a global lock.
+
+## Next stage (proposal)
+
+1. `selftest` on the user's real SMB share — then a support statement.
+2. Deployment behind the target reverse proxy (no separate Caddy profile — the user's decision); `FILEDECK_ORIGIN` also determines the address of public links.
+
+The prototype is a foundation for further implementation, not a ready replacement for a production File Browser.

@@ -1,14 +1,14 @@
-# Pierwszy etap implementacji
+# First implementation stage
 
-Powstał nowy projekt w [filedeck](../../README.md), z niezależnym modułem Go i kodem napisanym od nowa.
+A new project was created in [filedeck](../../README.md), with an independent Go module and code written from scratch.
 
-Zrealizowano prototyp storage, uprawnień i uploadu, zgodnie z kierunkiem etapu B planu. Rozstrzygnięcia na ten etap:
+A prototype of storage, permissions and upload was built, following the direction of stage B of the plan. Decisions for this stage:
 
-- Linux/Docker; otwieranie przez `openat2`, bez symlinków i zagnieżdżonych mountów.
-- Jedna przestrzeń i instancja; brak bazy na tym etapie.
-- Upload wyłącznie nowego pliku, z publikacją no-replace. Nadpisywanie wymaga dalszego projektu wobec zmian zewnętrznych.
-- Prywatny staging obok katalogu danych, na tym samym mountcie.
-- Restart usuwa porzucony staging zamiast udawać możliwość wznowienia.
-- Lokalne CLI jako narzędzie testowania; HTTP, sesje i UI pozostają następnym etapem.
+- Linux/Docker; opening through `openat2`, without symlinks and nested mounts.
+- One space and one instance; no database at this stage.
+- Upload of new files only, with no-replace publication. Overwriting requires further design with regard to external changes.
+- Private staging next to the data directory, on the same mount.
+- A restart removes abandoned staging instead of pretending that resumption is possible.
+- A local CLI as a testing tool; HTTP, sessions and the UI remain the next stage.
 
-[Kontrakt i ograniczenia](../CONTRACT.md) precyzują semantykę uchwytów, zmiany zewnętrzne i warunki wdrożenia. [Stan realizacji i weryfikacja](../PROGRESS.md) zawierają listę scenariuszy testowych oraz mapowanie do klas GHSA. Pełny audyt i weryfikacja pozostałych advisory nadal pozostają otwarte.
+This describes the first stage only; later stages (durable resumable uploads, multiple spaces, the web interface, public links) are in [PROGRESS.md](../PROGRESS.md). [The contract and limitations](../CONTRACT.md) define the semantics of handles, external changes and deployment conditions. [Progress and verification](../PROGRESS.md) contains the list of test scenarios and the mapping to GHSA classes.

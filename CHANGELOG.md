@@ -1,53 +1,59 @@
 # Changelog
 
-Zmiany w Filedeck opisane z perspektywy użytkownika: co zobaczysz, z czego skorzystasz, co się zmieni w pracy. Szczegóły techniczne i testy: [docs/PROGRESS.md](docs/PROGRESS.md), bezpieczeństwo: [docs/SECURITY.md](docs/SECURITY.md).
+Changes to Filedeck described from the user's point of view: what you will see, what you can use, what changes in your work. Technical details and tests: [docs/PROGRESS.md](docs/PROGRESS.md), security: [docs/SECURITY.md](docs/SECURITY.md).
 
-## [Niewydane] — pierwsza wersja (wrzesień 2026)
+## 0.1.0
 
-Filedeck to przeglądarka plików przez WWW napisana od zera jako następca File Browser — z naciskiem na to, żeby nie dało się przypadkiem stracić danych ani obejść uprawnień.
+Filedeck is a web file browser written from scratch as a successor to File Browser — built so that you cannot accidentally lose data or get around permissions.
 
 ### New Features
 
-- **Pierwsze uruchomienie w przeglądarce** — przy pierwszym starcie strona prosi o jednorazowy kod z logów serwera i pozwala założyć konto administratora bez wiersza poleceń.
-- **Wiele przestrzeni** — obok „Moich plików” widzisz foldery udostępnione przez serwer (np. dyski sieciowe), każdy jako osobną przestrzeń. Przestrzenie tylko do odczytu są oznaczone i nie pokazują przycisków zmian.
-- **Konta i uprawnienia per przestrzeń** — administrator tworzy konta i dla każdej przestrzeni osobno decyduje, kto może ją przeglądać, pobierać pliki, dodawać nowe i zmieniać istniejące.
-- **Wysyłanie plików i całych folderów** — przyciskiem albo przeciągając na okno lub na konkretny folder. Struktura podfolderów zostaje zachowana, a przerwane wysyłanie dużego pliku da się wznowić.
-- **Podgląd** zdjęć, filmów, muzyki, PDF-ów i plików tekstowych, z przechodzeniem strzałkami do poprzedniego i następnego pliku.
-- **Edytor plików tekstowych** (np. txt, md, yaml) — Ctrl+S zapisuje, widać niezapisane zmiany, a poprzednia wersja trafia do kosza. Jeśli ktoś w międzyczasie zmienił plik (np. przez udział sieciowy), Twoje zmiany nie nadpiszą jego wersji — możesz zapisać je jako nowy plik.
-- **Nowy plik tekstowy i nowy folder** jednym kliknięciem.
-- **Kopiowanie i przenoszenie** plików i folderów, także między przestrzeniami. Działa w tle, pokazuje postęp i można je anulować.
-- **Kosz** — usunięte rzeczy można przywrócić, także pod inną ścieżkę. Znikają same po okresie przechowywania; usunąć je na stałe może tylko administrator.
-- **Zmiana nazwy** plików i folderów.
-- **Zaznaczanie wielu pozycji** — pola wyboru, Ctrl+klik, Shift+klik (zakres), Esc czyści zaznaczenie. Zaznaczone pozycje możesz naraz skopiować, przenieść, wrzucić do kosza albo pobrać.
-- **Wyszukiwanie po nazwie** w bieżącym folderze i jego podfolderach. Kliknięcie wyniku otwiera folder, w którym leży plik, i jego podgląd.
-- **Sortowanie** po nazwie, rozmiarze i dacie modyfikacji (wybór jest zapamiętywany) oraz kolumna z datą modyfikacji.
-- **Dzwonek z historią** ostatnich operacji (wysyłanie, kopiowanie, kosz, zmiany nazw, zapisy) wraz z ich stanem i postępem.
-- **Motyw jasny, ciemny lub automatyczny** (jak w systemie), zapamiętywany.
-- **Język angielski (domyślny) i polski** z przełącznikiem, zapamiętywanym.
-- **Zmiana własnego hasła**; administrator może też ustawić nowe hasło innej osobie.
-- **Sprawdzenie dysku sieciowego przed użyciem** — polecenie `selftest` mówi, czy podłączony udział (SMB/NFS) obsługuje wszystko, czego Filedeck potrzebuje, zanim zaczniesz na nim zapisywać.
-- **Instalacja przez Docker Compose** z własnym certyfikatem HTTPS, dostępem z sieci lokalnej i automatyczną kontrolą stanu (status „healthy”).
+- **First start in the browser** — on the first start, the page asks for a one-time code from the server log and lets you create the administrator account without a command line.
+- **Multiple spaces** — next to "My files" you see folders shared by the server (e.g. network drives), each as a separate space. Read-only spaces are marked and show no buttons for changes.
+- **Accounts and per-space permissions** — the administrator creates accounts and decides, separately for each space, who can browse it, download files, add new ones and change existing ones.
+- **Upload files and whole folders** — with a button or by dragging onto the window or onto a specific folder. The subfolder structure is kept, and an interrupted upload of a large file can be resumed.
+- **Preview** of photos, videos, music, PDFs and text files, with arrow keys to move to the previous and next file.
+- **Text file editor** (e.g. txt, md, yaml) — Ctrl+S saves, unsaved changes are visible, and the previous version goes to the trash. If someone changed the file in the meantime (e.g. over a network share), your changes will not overwrite their version — you can save them as a new file.
+- **New text file and new folder** with one click.
+- **Copy and move** files and folders, also between spaces. Runs in the background, shows progress and can be cancelled.
+- **Trash** — deleted items can be restored, also under a different path. They disappear on their own after the retention period; only an administrator can delete them permanently.
+- **Rename** files and folders.
+- **Select multiple items** — checkboxes, Ctrl+click, Shift+click (range), Esc clears the selection. Selected items can be copied, moved, trashed or downloaded at once.
+- **Search by name** in the current folder and its subfolders. Clicking a result opens the folder the file is in, and its preview.
+- **Sorting** by name, size and modification date (your choice is remembered), plus a modification date column.
+- **Public links** — share a file or a whole folder with someone who has no account: choose how long the link lasts (from an hour to a year) and whether it needs a password, then copy it with one click. The recipient sees a simple page with a download button or the folder's file list. Nothing can be changed through a link, and it cannot reach outside the shared folder.
+- **List of shared links** — see all your links in one place: until when they are valid, which have a password and which have stopped working, and revoke any of them instantly. The administrator sees every user's links.
+- **Bell with history** of recent operations (uploads, copies, trash, renames, saves) with their status and progress.
+- **Light, dark or automatic theme** (following the system), remembered.
+- **English (default) and Polish** with a language switch, remembered.
+- **Change your own password**; the administrator can also set a new password for someone else.
+- **Check a network drive before use** — the `selftest` command tells you whether a mounted share (SMB/NFS) supports everything Filedeck needs, before you start writing to it.
+- **Installation with Docker Compose** with its own HTTPS certificate, access from the local network and an automatic health check ("healthy" status).
+- **Ready-made images to download** — every release goes to the image registry in a separate channel: stable (`latest`, version number) and development (`dev_latest`, `dev` + number). Updating a server means pulling a new image instead of building it on the spot. Images run on regular servers (x86-64) as well as on ARM (e.g. Raspberry Pi 4/5, ARM servers).
 
 ### Improvements
 
-- **Zabezpieczenia względem File Browser** — sprawdzone wszystkie 62 znane podatności oryginału. Te, które dotyczą funkcji obecnych w Filedeck, są zablokowane i pilnowane testami. Filedeck nie uruchamia poleceń systemowych i nie ma funkcji, z których wzięła się część dawnych podatności.
-- **Nic nie jest nadpisywane po cichu** — przy wysyłaniu, kopiowaniu, przenoszeniu, zmianie nazwy i przywracaniu z kosza istniejący plik o tej samej nazwie zostaje nietknięty, a Ty dostajesz komunikat.
-- **Pliki pojawiają się dopiero w całości** — ani inni użytkownicy, ani programy korzystające z tego samego folderu nie zobaczą niedokończonego pliku. Po awarii serwera nie zostają połówki plików.
-- **Dysk nie zapełni się do zera** — Filedeck zostawia zapas wolnego miejsca i odmawia wysyłania lub kopiowania, zamiast zapchać dysk innym programom.
-- **Zmiany kont działają natychmiast** — zmiana hasła, blokada konta lub zmiana uprawnień od razu kończy wszystkie sesje tej osoby.
-- **Komunikaty zamiast sekcji pod listą plików** — operacje nie zajmują już miejsca pod tabelą. Krótkie powiadomienia znikają same po kilku sekundach, najwyżej 3 naraz, więc nie zasłaniają przycisków; resztę znajdziesz pod dzwonkiem.
-- **Czytelniejsze akcje w wierszach** — ikony z podpowiedzią po najechaniu; zmiana nazwy ma własną, rozpoznawalną ikonę.
-- **Dopracowany jasny motyw** z nową paletą kolorów.
-- **Działa bez internetu** — ikony i wszystkie elementy strony są wbudowane w aplikację.
-- **Konkretne komunikaty błędów** — mówią, co się stało i co zrobić (np. brak miejsca, plik zmieniony w międzyczasie, brak uprawnień, zły adres w konfiguracji).
+- **Protection compared to File Browser** — all 62 known vulnerabilities of the original were reviewed. Those that concern features present in Filedeck are blocked and guarded by tests. Filedeck does not run system commands and does not have the features some of the old vulnerabilities came from.
+- **Nothing is overwritten silently** — when uploading, copying, moving, renaming or restoring from the trash, an existing file with the same name stays untouched and you get a message.
+- **Files appear only when complete** — neither other users nor programs using the same folder will ever see an unfinished file. A server crash leaves no half-written files behind.
+- **The disk never fills up completely** — Filedeck keeps a reserve of free space and refuses an upload or copy rather than filling the disk for other programs.
+- **Links do not survive changes** — a link stops working when the file is moved, renamed or deleted (also through a network drive or another program) and when its owner loses access to that place. A new file with the same name will not be shared by accident through an old link.
+- **Account changes take effect immediately** — changing a password, disabling an account or changing permissions ends all of that person's sessions at once.
+- **Notifications instead of sections under the file list** — operations no longer take up space below the table. Short notifications disappear on their own after a few seconds, at most 3 at a time, so they do not cover buttons; the rest is under the bell.
+- **Clearer row actions** — icons with a tooltip on hover; rename has its own recognisable icon.
+- **Polished light theme** with a new colour palette.
+- **Works without internet** — icons and all page elements are built into the application.
+- **Specific error messages** — they say what happened and what to do (e.g. no space left, file changed in the meantime, no permission, wrong address in the configuration).
 
 ### Bug Fixes
 
-- Błędne hasło administratora przy tworzeniu konta lub zmianie hasła wyglądało jak wylogowanie. Teraz pojawia się komunikat „Wrong password”, a sesja trwa dalej.
-- Wysyłanie folderu było odrzucane — teraz działa zarówno z przycisku, jak i przez przeciągnięcie.
-- Plik przeciągnięty na okno otwierał się w przeglądarce zamiast się wysłać.
-- Nowa instalacja z ustawionym użytkownikiem kontenera (`FILEDECK_USER`) nie startowała z błędem „permission denied”.
-- Strona była nieosiągalna z innych komputerów w sieci, a kontener przed założeniem administratora restartował się w kółko. Teraz wystarczy ustawić adres w `.env`, a pierwszy start spokojnie czeka na założenie konta w przeglądarce.
-- Po przeładowaniu strony zakończone wcześniej operacje nie wyskakują już ponownie jako nowe powiadomienia.
-- Podpowiedzi przycisków w górnym pasku wychodziły poza ekran.
-- Po zalogowaniu otwierała się pierwsza alfabetycznie przestrzeń, nawet jeśli była tylko do odczytu. Teraz otwiera się ta, w której możesz pracować.
+- A wrong administrator password when creating an account or changing a password looked like a logout. Now a "Wrong password" message appears and the session continues.
+- Uploading a folder was refused — it now works both from the button and by dragging.
+- A file dragged onto the window opened in the browser instead of being uploaded.
+- A new installation with a container user set (`FILEDECK_USER`) failed to start with "permission denied".
+- The page could not be reached from other computers on the network, and the container kept restarting before an administrator was created. Now it is enough to set the address in `.env`, and the first start calmly waits for the account to be created in the browser.
+- After reloading the page, operations finished earlier no longer pop up again as new notifications.
+- Downloads of large files broke off after about a minute on slower connections. Now a download lasts as long as data keeps flowing.
+- Rows in the trash had misaligned table lines.
+- Tooltips of the buttons in the top bar went off-screen.
+- After signing in, the alphabetically first space opened, even when it was read-only. Now the one you can work in opens.
