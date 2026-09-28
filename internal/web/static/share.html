@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Filedeck</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/assets/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/theme.js"></script>
+<script src="/assets/share.js" defer></script>
+</head>
+<body>
+<!-- Public link page: read-only, no account. The token stays in the URL path. -->
+<header class="bar">
+  <span class="brand"><picture><source media="(max-width: 760px)" srcset="/assets/logo-mark.png"><img src="/assets/icon-64.png" alt="Filedeck" width="22" height="22"></picture><span class="brand-name">Filedeck</span></span>
+  <div class="bar-right">
+    <button type="button" id="lang" class="link" data-i18n-title="lang.title" title="Language"><span class="ic ic-language" aria-hidden="true"></span><span id="lang-label">EN</span></button>
+    <button type="button" id="theme" class="link" aria-label="Theme"><span class="ic ic-device-desktop" aria-hidden="true"></span><span>Auto</span></button>
+  </div>
+</header>
+
+<main>
+  <section id="loading-view" class="card narrow"><p class="muted center" data-i18n="common.loading">Loading…</p></section>
+
+  <section id="unlock-view" class="card narrow" hidden>
+    <h1><span class="ic ic-lock" aria-hidden="true"></span> <span data-i18n="public.locked_title">This link is protected</span></h1>
+    <p class="muted" data-i18n="public.locked_text">Enter the password you received with the link.</p>
+    <form id="unlock-form" autocomplete="off">
+      <label><span data-i18n="login.password">Password</span> <input name="password" type="password" required maxlength="1024" autofocus></label>
+      <button type="submit" class="primary" data-i18n="public.unlock">Open</button>
+    </form>
+  </section>
+
+  <section id="file-view" class="card narrow" hidden>
+    <div class="shared-file">
+      <span id="file-icon" class="ic ic-file" aria-hidden="true"></span>
+      <span id="file-name" class="name"></span>
+      <span id="file-meta" class="muted"></span>
+      <a id="file-download" class="button primary" href="#"><span class="ic ic-download" aria-hidden="true"></span><span data-i18n="action.download">Download</span></a>
+    </div>
+    <p class="muted center shared-note" id="file-expires"></p>
+  </section>
+
+  <section id="folder-view" hidden>
+    <div class="toolbar"><ol id="crumbs" class="crumbs" data-i18n-aria-label="files.path" aria-label="Path"></ol></div>
+    <div class="card list">
+      <table class="files public">
+        <thead><tr><th data-i18n="files.name">Name</th><th class="num size-col" data-i18n="files.size">Size</th><th class="num date-col" data-i18n="files.modified">Modified</th><th class="actions-col"></th></tr></thead>
+        <tbody id="entries"></tbody>
+      </table>
+      <p id="empty" class="muted center" hidden data-i18n="files.empty">This folder is empty.</p>
+    </div>
+    <p class="muted center shared-note" id="folder-expires"></p>
+  </section>
+
+  <section id="gone-view" class="card narrow" hidden>
+    <h1 data-i18n="public.gone_title">This link is not available</h1>
+    <p class="muted" data-i18n="public.gone_text">It may have expired or been revoked, or the shared item was moved or deleted. Ask the person who sent it for a new link.</p>
+  </section>
+</main>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>

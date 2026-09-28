@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Filedeck</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/assets/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/assets/manifest.webmanifest">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171c23" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-title" content="Filedeck">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/theme.js"></script>
+<script src="/assets/app.js" defer></script>
+</head>
+<body>
+<!-- Texts in English are the default; elements with data-i18n* are translated at startup (lang-*.json). -->
+<header class="bar">
+  <span class="brand"><picture><source media="(max-width: 760px)" srcset="/assets/logo-mark.png"><img src="/assets/icon-64.png" alt="Filedeck" width="22" height="22"></picture><span class="brand-name">Filedeck</span></span>
+  <div class="bar-right">
+    <button type="button" id="lang" class="link" data-i18n-title="lang.title" title="Language"><span class="ic ic-language" aria-hidden="true"></span><span id="lang-label">EN</span></button>
+    <button type="button" id="theme" class="link" aria-label="Theme"><span class="ic ic-device-desktop" aria-hidden="true"></span><span>Auto</span></button>
+    <nav id="session" hidden>
+      <div class="bell-wrap">
+        <button type="button" id="bell" class="link icon-only-link" data-i18n-aria-label="notify.title" data-tip-i18n="notify.title" aria-label="Notifications" aria-expanded="false"><span class="ic ic-bell" aria-hidden="true"></span><span id="bell-badge" class="bell-badge" hidden></span></button>
+        <section id="bell-panel" class="bell-panel" hidden>
+          <div class="row between"><strong data-i18n="notify.recent">Recent operations</strong><button type="button" id="bell-clear" class="link" data-i18n="notify.clear">Clear finished</button></div>
+          <ul id="history" class="history"></ul>
+          <p id="history-empty" class="muted center" data-i18n="notify.empty">No operations yet.</p>
+        </section>
+      </div>
+      <!-- Account links live in a menu opened by this button. -->
+      <button type="button" id="menu-toggle" class="link icon-only-link" aria-expanded="false" aria-controls="nav-menu" data-i18n-aria-label="nav.menu" aria-label="Menu"><span class="ic ic-menu-2" aria-hidden="true"></span></button>
+      <div id="nav-menu" class="nav-menu">
+      <span id="whoami" class="muted"></span>
+      <button type="button" id="open-links" class="link"><span class="ic ic-link" aria-hidden="true"></span><span data-i18n="nav.links">Shared links</span></button>
+      <button type="button" id="open-admin" class="link" hidden><span class="ic ic-users" aria-hidden="true"></span><span data-i18n="nav.users">Users</span></button>
+      <button type="button" id="open-password" class="link"><span class="ic ic-key" aria-hidden="true"></span><span data-i18n="nav.password">Change password</span></button>
+      <button type="button" id="open-totp" class="link"><span class="ic ic-shield-lock" aria-hidden="true"></span><span data-i18n="nav.totp">Two-factor authentication</span></button>
+      <button type="button" id="logout" class="link"><span class="ic ic-logout" aria-hidden="true"></span><span data-i18n="nav.logout">Log out</span></button>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section id="setup-view" class="card narrow auth" hidden>
+    <img class="auth-banner" src="/assets/filedeck-banner.png" alt="Filedeck" width="1500" height="500">
+    <div class="auth-body">
+    <h1 data-i18n="setup.title">First start</h1>
+    <p class="muted"><span data-i18n="setup.hint">Create the administrator account. The setup code is in the server log:</span> <code>docker compose logs filedeck</code></p>
+    <form id="setup-form" autocomplete="off">
+      <label><span data-i18n="setup.code">Setup code</span> <input name="code" required autocomplete="one-time-code" placeholder="XXXX-XXXX-XXXX-XXXX" spellcheck="false"></label>
+      <label><span data-i18n="setup.username">Administrator name</span> <input name="username" required value="admin" pattern="[a-z0-9][a-z0-9._\-]{2,63}" data-i18n-title="field.username_rule" title="3–64 characters: lowercase letters, digits, . _ -" autocomplete="username"></label>
+      <label><span data-i18n="field.password_min">Password (min. 12 characters)</span> <input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
+      <label><span data-i18n="field.password_repeat">Repeat password</span> <input name="repeat" type="password" required minlength="12" autocomplete="new-password"></label>
+      <button type="submit" class="primary" data-i18n="setup.submit">Create administrator</button>
+    </form>
+    </div>
+  </section>
+
+  <section id="login-view" class="card narrow auth" hidden>
+    <img class="auth-banner" src="/assets/filedeck-banner.png" alt="Filedeck" width="1500" height="500">
+    <div class="auth-body">
+    <h1 data-i18n="login.title">Sign in</h1>
+    <form id="login-form" autocomplete="on">
+      <label><span data-i18n="login.username">Username</span> <input name="username" autocomplete="username" required autofocus></label>
+      <label><span data-i18n="login.password">Password</span> <input name="password" type="password" autocomplete="current-password" required></label>
+      <div id="login-code-row" hidden>
+        <label><span data-i18n="login.code">Authentication code</span> <input name="code" autocomplete="one-time-code" inputmode="numeric" maxlength="16" spellcheck="false"></label>
+        <p class="muted small"><span data-i18n="login.code_hint">Enter the 6-digit code from your authenticator app.</span> <button type="button" id="login-recovery" class="link inline-link" data-i18n="login.use_recovery">Use a recovery code</button></p>
+      </div>
+      <button type="submit" class="primary" data-i18n="login.submit">Sign in</button>
+    </form>
+    </div>
+  </section>
+
+  <section id="files-view" hidden>
+    <nav id="spaces" class="tabs" data-i18n-aria-label="files.spaces" aria-label="Spaces"></nav>
+    <div class="toolbar">
+      <ol id="crumbs" class="crumbs" data-i18n-aria-label="files.path" aria-label="Path"></ol>
+      <span class="toolbar-break" aria-hidden="true"></span>
+      <div class="actions">
+        <form id="search-form" class="search" role="search">
+          <span class="ic ic-search" aria-hidden="true"></span>
+          <input name="q" type="search" maxlength="100" data-i18n-placeholder="search.placeholder" placeholder="Search in this folder" data-i18n-aria-label="search.placeholder" aria-label="Search in this folder">
+        </form>
+        <span id="readonly" class="badge" hidden><span class="ic ic-lock" aria-hidden="true"></span> <span data-i18n="files.read_only">read-only</span></span>
+        <form id="mkdir-form" class="inline" hidden>
+          <input name="name" data-i18n-placeholder="files.new_folder" placeholder="New folder" data-i18n-aria-label="files.new_folder" aria-label="New folder" required maxlength="255">
+          <button type="submit"><span class="ic ic-folder-plus" aria-hidden="true"></span><span data-i18n="files.create">Create</span></button>
+        </form>
+        <button type="button" id="new-folder" class="icon-only" hidden data-i18n-aria-label="files.new_folder" data-tip-i18n="files.new_folder" aria-label="New folder"><span class="ic ic-folder-plus" aria-hidden="true"></span></button>
+        <button type="button" id="new-text" hidden><span class="ic ic-file-plus" aria-hidden="true"></span><span data-i18n="files.new_file">New file</span></button>
+        <label id="upload-label" class="button primary" hidden><span class="ic ic-upload" aria-hidden="true"></span><span data-i18n="files.upload">Upload files</span><input id="upload-input" type="file" multiple hidden></label>
+        <label id="upload-dir-label" class="button" hidden><span class="ic ic-folder-up" aria-hidden="true"></span><span data-i18n="files.upload_folder">Upload folder</span><input id="upload-dir-input" type="file" webkitdirectory multiple hidden></label>
+        <button type="button" id="select-mode" class="icon-only" aria-pressed="false" data-i18n-aria-label="select.toggle" data-tip-i18n="select.toggle" aria-label="Select items"><span class="ic ic-checkbox" aria-hidden="true"></span></button>
+        <button type="button" id="open-trash" class="icon-only" hidden data-i18n-aria-label="files.trash" data-tip-i18n="files.trash" aria-label="Trash"><span class="ic ic-trash" aria-hidden="true"></span></button>
+        <button type="button" id="refresh" class="icon-only" data-i18n-aria-label="files.refresh" data-tip-i18n="files.refresh" aria-label="Refresh"><span class="ic ic-refresh" aria-hidden="true"></span></button>
+      </div>
+    </div>
+    <div id="search-bar" class="search-bar" hidden>
+      <span id="search-summary"></span>
+      <button type="button" id="search-clear" class="link"><span class="ic ic-x" aria-hidden="true"></span><span data-i18n="search.clear">Clear search</span></button>
+    </div>
+    <div id="bulk-bar" class="bulk-bar" hidden>
+      <span id="bulk-count"></span>
+      <div class="row">
+        <button type="button" id="bulk-download" class="icon-only" data-i18n-aria-label="select.download" data-tip-i18n="select.download" aria-label="Download selected files"><span class="ic ic-download" aria-hidden="true"></span></button>
+        <button type="button" id="bulk-transfer" class="icon-only" data-i18n-aria-label="action.copy_move" data-tip-i18n="action.copy_move" aria-label="Copy or move"><span class="ic ic-copy" aria-hidden="true"></span></button>
+        <button type="button" id="bulk-trash" class="icon-only danger" data-i18n-aria-label="action.delete" data-tip-i18n="action.delete" aria-label="Delete"><span class="ic ic-trash" aria-hidden="true"></span></button>
+        <button type="button" id="bulk-clear" class="link" data-i18n="select.clear">Clear selection</button>
+      </div>
+    </div>
+    <div id="drop" class="card list">
+      <table id="file-table" class="files">
+        <thead><tr>
+          <th class="sel-col"><input type="checkbox" id="select-all" data-i18n-aria-label="select.all" aria-label="Select all"></th>
+          <th><button type="button" class="sort" data-sort="name"><span data-i18n="files.name">Name</span><span class="sort-mark" aria-hidden="true"></span></button></th>
+          <th class="num size-col"><button type="button" class="sort" data-sort="size"><span data-i18n="files.size">Size</span><span class="sort-mark" aria-hidden="true"></span></button></th>
+          <th class="num date-col"><button type="button" class="sort" data-sort="modified"><span data-i18n="files.modified">Modified</span><span class="sort-mark" aria-hidden="true"></span></button></th>
+          <th class="actions-col"></th>
+        </tr></thead>
+        <tbody id="entries"></tbody>
+      </table>
+      <p id="empty" class="muted center" hidden data-i18n="files.empty">This folder is empty.</p>
+    </div>
+  </section>
+
+  <section id="editor-view" class="card" hidden>
+    <div class="editor-head">
+      <div class="row wrap"><span class="ic ic-file-text" aria-hidden="true"></span><span id="editor-name" class="name"></span><span id="editor-state" class="editor-state muted"></span></div>
+      <div class="row wrap">
+        <button type="button" id="editor-save" class="primary"><span class="ic ic-device-floppy" aria-hidden="true"></span><span data-i18n="editor.save">Save</span></button>
+        <button type="button" id="editor-close"><span class="ic ic-x" aria-hidden="true"></span><span data-i18n="common.close">Close</span></button>
+      </div>
+    </div>
+    <textarea id="editor-text" spellcheck="false" autocapitalize="off" autocomplete="off" data-i18n-aria-label="editor.content" aria-label="File content"></textarea>
+    <p class="muted" data-i18n="editor.hint">Ctrl+S saves. The previous version goes to this space's trash. If the file changes meanwhile (e.g. over SMB), saving is stopped.</p>
+  </section>
+
+  <section id="trash-view" class="card" hidden>
+    <div class="row between"><h1 id="trash-title">Trash</h1><button type="button" id="close-trash"><span class="ic ic-arrow-left" aria-hidden="true"></span><span data-i18n="trash.back">Back to files</span></button></div>
+    <p class="muted" id="trash-hint"></p>
+    <table class="stack">
+      <thead><tr><th data-i18n="trash.origin">Original location</th><th class="num" data-i18n="files.size">Size</th><th data-i18n="trash.deleted">Deleted</th><th></th></tr></thead>
+      <tbody id="trash-entries"></tbody>
+    </table>
+    <p id="trash-empty" class="muted center" hidden data-i18n="trash.empty">The trash is empty.</p>
+  </section>
+
+  <section id="links-view" class="card" hidden>
+    <div class="row between wrap">
+      <h1 data-i18n="links.title">Shared links</h1>
+      <div class="row wrap">
+        <label id="links-all-label" class="check" hidden><input type="checkbox" id="links-all"> <span data-i18n="links.all_users">All users</span></label>
+        <button type="button" id="close-links"><span class="ic ic-arrow-left" aria-hidden="true"></span><span data-i18n="trash.back">Back to files</span></button>
+      </div>
+    </div>
+    <p class="muted" data-i18n="links.hint">Anyone with a link can download the shared item without signing in. A link stops working when it expires, when it is revoked, or when the item is moved, renamed or deleted.</p>
+    <table class="stack">
+      <thead><tr><th data-i18n="links.item">Shared item</th><th id="links-owner-col" data-i18n="links.owner" hidden>Owner</th><th data-i18n="links.expires">Expires</th><th data-i18n="links.status">Status</th><th></th></tr></thead>
+      <tbody id="links-entries"></tbody>
+    </table>
+    <p id="links-empty" class="muted center" hidden data-i18n="links.empty">No shared links.</p>
+  </section>
+
+  <section id="admin-view" class="card" hidden>
+    <div class="row between wrap">
+      <h1 data-i18n="admin.title">Users</h1>
+      <div class="row wrap">
+        <button type="button" id="new-user" class="primary"><span class="ic ic-user-plus" aria-hidden="true"></span><span data-i18n="admin.new_user">New user</span></button>
+        <button type="button" id="close-admin"><span class="ic ic-arrow-left" aria-hidden="true"></span><span data-i18n="trash.back">Back to files</span></button>
+      </div>
+    </div>
+    <table class="stack users-table">
+      <thead><tr><th data-i18n="admin.name">Name</th><th data-i18n="admin.role">Role</th><th data-i18n="admin.access">Access</th><th></th></tr></thead>
+      <tbody id="users"></tbody>
+    </table>
+  </section>
+</main>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<dialog id="user-dialog" class="user-dialog">
+  <form id="user-form" method="dialog">
+    <h2 id="user-title"></h2>
+    <div id="user-new" class="grid">
+      <label><span data-i18n="admin.name">Name</span> <input name="username" pattern="[a-z0-9][a-z0-9._\-]{2,63}" data-i18n-title="field.username_rule" title="3–64 characters: lowercase letters, digits, . _ -" autocomplete="off" spellcheck="false"></label>
+      <label><span data-i18n="field.password_min">Password (min. 12 characters)</span> <input name="password" type="password" autocomplete="new-password" minlength="12"></label>
+    </div>
+    <div class="row wrap">
+      <label class="check"><input type="checkbox" name="admin"> <span data-i18n="admin.administrator">Administrator</span></label>
+      <label id="user-disabled-label" class="check"><input type="checkbox" name="disabled"> <span data-i18n="admin.disabled">Disabled</span></label>
+    </div>
+    <h3 data-i18n="admin.permissions">Permissions</h3>
+    <div id="user-grants"></div>
+    <p class="muted small" data-i18n="admin.legend">Permissions: L – list, R – read, C – create (upload, folders), M – modify (rename, trash). The “all” row also covers spaces added later.</p>
+    <details id="user-more">
+      <summary data-i18n="admin.more">Password, two-factor authentication, deletion</summary>
+      <div class="user-more">
+        <div class="row wrap">
+          <input name="next" type="password" autocomplete="new-password" minlength="12" data-i18n-placeholder="admin.new_password" placeholder="new password, min. 12 characters" data-i18n-aria-label="admin.new_password" aria-label="new password, min. 12 characters">
+          <button type="button" id="user-set-password"><span class="ic ic-key" aria-hidden="true"></span><span data-i18n="admin.set_password">Set password</span></button>
+        </div>
+        <div class="row wrap">
+          <button type="button" id="user-totp-reset"><span class="ic ic-shield-lock" aria-hidden="true"></span><span data-i18n="admin.totp_reset">Turn off 2FA</span></button>
+          <button type="button" id="user-delete" class="danger"><span class="ic ic-trash" aria-hidden="true"></span><span data-i18n="admin.delete">Delete user</span></button>
+        </div>
+      </div>
+    </details>
+    <label class="reauth-field"><span data-i18n="admin.reauth">Your password (confirms the change)</span> <input id="reauth" name="reauth" type="password" autocomplete="current-password"></label>
+    <div class="row end"><button type="button" id="user-cancel" data-i18n="common.cancel">Cancel</button><button type="submit" id="user-submit" class="primary"></button></div>
+  </form>
+</dialog>
+
+<dialog id="password-dialog">
+  <form id="password-form" method="dialog">
+    <h2 data-i18n="password.title">Change password</h2>
+    <label><span data-i18n="password.current">Current password</span> <input name="current" type="password" autocomplete="current-password" required></label>
+    <label><span data-i18n="password.new">New password (min. 12 characters)</span> <input name="next" type="password" autocomplete="new-password" required minlength="12"></label>
+    <p class="muted" data-i18n="password.hint">All sessions end after the change.</p>
+    <div class="row end"><button type="button" id="password-cancel" data-i18n="common.cancel">Cancel</button><button type="submit" class="primary" data-i18n="password.submit">Change</button></div>
+  </form>
+</dialog>
+
+<dialog id="totp-dialog">
+  <form id="totp-form" method="dialog">
+    <h2 data-i18n="totp.title">Two-factor authentication</h2>
+    <p id="totp-status" class="totp-status"></p>
+    <p class="muted" data-i18n="totp.intro">After signing in with your password you also enter a code from an authenticator app on your phone (e.g. Google Authenticator, Microsoft Authenticator, 2FAS, Aegis, Bitwarden).</p>
+    <div id="totp-manage">
+      <label><span data-i18n="password.current">Current password</span> <input name="password" type="password" autocomplete="current-password"></label>
+      <div class="row wrap">
+        <button type="button" id="totp-start" class="primary"></button>
+        <button type="button" id="totp-renew" data-i18n="totp.renew">New recovery codes</button>
+        <button type="button" id="totp-disable" class="danger" data-i18n="totp.disable">Turn off</button>
+      </div>
+    </div>
+    <div id="totp-setup" hidden>
+      <p data-i18n="totp.scan">1. Scan the code with your authenticator app:</p>
+      <canvas id="totp-qr" class="totp-qr" width="200" height="200" data-i18n-aria-label="totp.qr" aria-label="QR code" role="img"></canvas>
+      <p class="muted small"><span data-i18n="totp.key">Or type in this key:</span> <code id="totp-key" class="totp-key"></code></p>
+      <label><span data-i18n="totp.confirm_label">2. Enter the 6-digit code the app shows:</span> <input name="code" autocomplete="one-time-code" inputmode="numeric" maxlength="6" pattern="[0-9 ]*" spellcheck="false"></label>
+      <div class="row end"><button type="button" id="totp-confirm" class="primary" data-i18n="totp.confirm">Turn on</button></div>
+    </div>
+    <div id="totp-codes" hidden>
+      <p><strong data-i18n="totp.codes_title">Recovery codes</strong></p>
+      <p class="muted small" data-i18n="totp.codes_hint">If you lose your phone, sign in with one of these codes instead of the app code. Each code works once. Save them somewhere safe now — they are not shown again.</p>
+      <ol id="totp-code-list" class="totp-codes"></ol>
+      <div class="row wrap">
+        <button type="button" id="totp-copy"><span class="ic ic-copy" aria-hidden="true"></span><span data-i18n="totp.copy">Copy</span></button>
+        <button type="button" id="totp-download"><span class="ic ic-download" aria-hidden="true"></span><span data-i18n="totp.download">Download</span></button>
+      </div>
+    </div>
+    <div class="row end"><button type="button" id="totp-close" data-i18n="common.close">Close</button></div>
+  </form>
+</dialog>
+
+<dialog id="preview-dialog" class="wide">
+  <div class="preview-head">
+    <div class="row"><span id="preview-icon" class="ic ic-file" aria-hidden="true"></span><span id="preview-name" class="name"></span></div>
+    <div class="row wrap">
+      <button type="button" id="preview-prev" class="icon-only" data-i18n-aria-label="preview.prev" data-tip-i18n="preview.prev" aria-label="Previous"><span class="ic ic-chevron-left" aria-hidden="true"></span></button>
+      <button type="button" id="preview-next" class="icon-only" data-i18n-aria-label="preview.next" data-tip-i18n="preview.next" aria-label="Next"><span class="ic ic-chevron-right" aria-hidden="true"></span></button>
+      <button type="button" id="preview-edit" hidden><span class="ic ic-pencil" aria-hidden="true"></span><span data-i18n="action.edit">Edit</span></button>
+      <a id="preview-download" class="button" href="#"><span class="ic ic-download" aria-hidden="true"></span><span data-i18n="action.download">Download</span></a>
+      <button type="button" id="preview-close" class="icon-only" data-i18n-aria-label="common.close" data-tip-i18n="common.close" aria-label="Close"><span class="ic ic-x" aria-hidden="true"></span></button>
+    </div>
+  </div>
+  <div id="preview-body" class="preview-body"></div>
+</dialog>
+
+<dialog id="transfer-dialog">
+  <form id="transfer-form" method="dialog">
+    <h2 data-i18n="transfer.title">Copy or move</h2>
+    <p id="transfer-source" class="muted"></p>
+    <div class="radio-row">
+      <label><input type="radio" name="kind" value="copy" checked> <span data-i18n="transfer.copy">Copy</span></label>
+      <label id="transfer-move-label"><input type="radio" name="kind" value="move"> <span data-i18n="transfer.move">Move</span></label>
+    </div>
+    <label><span data-i18n="transfer.space">Destination space</span> <select name="space"></select></label>
+    <label><span id="transfer-path-label" data-i18n="transfer.path">Destination path (in the space)</span> <input name="path" maxlength="4096" spellcheck="false"></label>
+    <p class="muted" data-i18n="transfer.hint">The parent folder must exist. Nothing is overwritten. Moving to another space puts the source in its trash.</p>
+    <div class="row end"><button type="button" id="transfer-cancel" data-i18n="common.cancel">Cancel</button><button type="submit" class="primary" data-i18n="transfer.submit">Run</button></div>
+  </form>
+</dialog>
+
+<dialog id="share-dialog">
+  <form id="share-form" method="dialog">
+    <h2 data-i18n="share.title">Share a link</h2>
+    <p id="share-source" class="muted"></p>
+    <div id="share-settings">
+      <label><span data-i18n="share.expires">Link expires after</span>
+        <select name="hours">
+          <option value="1" data-i18n="share.h1">1 hour</option>
+          <option value="24" data-i18n="share.d1">1 day</option>
+          <option value="168" data-i18n="share.d7" selected>7 days</option>
+          <option value="720" data-i18n="share.d30">30 days</option>
+          <option value="2160" data-i18n="share.d90">90 days</option>
+          <option value="8760" data-i18n="share.y1">1 year</option>
+        </select>
+      </label>
+      <label><span data-i18n="share.password">Password (optional, min. 8 characters)</span> <input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="1024"></label>
+      <p id="share-hint" class="muted"></p>
+    </div>
+    <div id="share-result" hidden>
+      <label><span data-i18n="share.url">Link</span> <input id="share-url" readonly spellcheck="false"></label>
+      <p class="muted" data-i18n="share.once">Copy the link now: for security it is not stored and cannot be shown again. You can always revoke it and create a new one under “Shared links”.</p>
+    </div>
+    <div class="row end">
+      <button type="button" id="share-cancel" data-i18n="common.close">Close</button>
+      <button type="submit" id="share-submit" class="primary" data-i18n="share.create">Create link</button>
+      <button type="button" id="share-copy" class="primary" hidden><span class="ic ic-copy" aria-hidden="true"></span><span data-i18n="share.copy">Copy link</span></button>
+    </div>
+  </form>
+</dialog>
+
+<div id="drop-overlay" class="drop-overlay" hidden><div><span class="ic ic-drag-drop" aria-hidden="true"></span><span id="drop-text"></span></div></div>
+
+<dialog id="action-sheet" class="sheet">
+  <p id="sheet-title" class="sheet-title"></p>
+  <div id="sheet-actions" class="sheet-actions"></div>
+  <button type="button" id="sheet-cancel" data-i18n="common.cancel">Cancel</button>
+</dialog>
+
+<dialog id="ask-dialog">
+  <form id="ask-form" method="dialog">
+    <h2 id="ask-title"></h2>
+    <p id="ask-text" class="muted"></p>
+    <label id="ask-label"><span id="ask-label-text"></span> <input name="value" maxlength="4096" spellcheck="false"></label>
+    <div class="row end"><button type="button" id="ask-cancel" data-i18n="common.cancel">Cancel</button><button type="submit" class="primary" id="ask-ok">OK</button></div>
+  </form>
+</dialog>
+</body>
+</html>

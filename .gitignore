@@ -1,0 +1,25 @@
+# Local configuration of a server (see .env.example, compose.override.example.yaml)
+/.env
+/compose.override.yaml
+
+# Read-only reference checkout of File Browser (never committed)
+/reference/
+
+# Build and test output
+/bin/
+/filedeck
+/demo/
+/coverage.out
+*.test
+*.prof
+/test/ui/node_modules/
+/test/ui/out/
+/test/ui/package*.json
+
+# Editors, OS and local agent settings
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+/.claude/settings.local.json

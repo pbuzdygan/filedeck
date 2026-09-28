@@ -1,0 +1,17 @@
+# Only go.mod, go.sum, cmd/ and internal/ are needed to build the image.
+.git
+.github
+.env
+.env.example
+compose*.yaml
+bin
+filedeck
+coverage.out
+demo
+test
+docs
+reference
+third_party
+*.md
+Makefile
+branding
