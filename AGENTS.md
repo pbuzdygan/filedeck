@@ -17,6 +17,7 @@ This file is the single source of project context for agents. Read it at the sta
 
 ## Code rules
 
+- **Logo and app icons:** `branding/` holds the master copies (see `branding/README.md`) and is the user's reference — do not add, remove or edit files there without being asked. The app uses identical copies in `internal/web/static/`; never edit the PNGs by hand.
 - **Icons:** Tabler Icons only, **offline**. Copy `icons/outline/<name>.svg` from `@tabler/icons` 3.48.0 (e.g. `https://cdn.jsdelivr.net/npm/@tabler/icons@3.48.0/icons/outline/<name>.svg`; check that the file contains only `<path>` elements) to `internal/web/static/ti-<name>.svg`, add an `.ic-<name>` rule in `app.css`, list the icon in `third_party/tabler-icons/README.md`, render it with `icon('<name>')`. No CDNs or internet resources at runtime.
 - **Security:**
   - no `os/exec`, plugins or HTML templates (enforced by `internal/audit`);
@@ -80,7 +81,7 @@ The server is an LXC with 6 GB RAM, 3 CPUs and **no swap**. `/tmp` lives in RAM 
 
 ## Status on 2026-09-28 (evening)
 
-Stages 1–10 are done and deployed:
+Stages 1–11 are done and deployed:
 
 - core, accounts and sessions, resumable uploads;
 - UI and Compose;
@@ -89,10 +90,11 @@ Stages 1–10 are done and deployed:
 - EN/PL, notifications, selection, folder upload;
 - reauth fix, `selftest`, sorting and search;
 - user deletion, "My files" tab first, file table with cut long names (stage 10);
+- branding, PWA icons, banner on the sign-in screen; phone layout (stage 11);
 - public links (stage 9);
 - release workflow (`dev`/`main` channels, amd64 + arm64).
 
-All Go tests pass, and the browser test passes in 25 steps (without a `nas` space; with it, the host-space steps are added).
+All Go tests pass, and the browser test passes in 26 steps (including a phone step) (without a `nas` space; with it, the host-space steps are added).
 
 Next steps (only after the user confirms):
 

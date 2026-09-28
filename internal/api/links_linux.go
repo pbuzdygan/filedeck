@@ -93,6 +93,7 @@ func (a *API) linkRoutes() {
 	}, false, false))
 
 	a.mux.HandleFunc("GET /s/{token}", web.Share)
+	a.mux.HandleFunc("GET /favicon.ico", web.Favicon)
 	a.mux.HandleFunc("GET /api/public/{token}", a.public(func(w http.ResponseWriter, r *http.Request, s *core.Shared, unlocked bool) {
 		if !unlocked {
 			reply(w, 200, map[string]bool{"needs_password": true})

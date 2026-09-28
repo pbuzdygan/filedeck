@@ -252,6 +252,8 @@ td.date-col { font-size: .88rem; }
 .ic-drag-drop { -webkit-mask-image: url(/assets/ti-drag-drop.svg); mask-image: url(/assets/ti-drag-drop.svg); }
 .ic-external-link { -webkit-mask-image: url(/assets/ti-external-link.svg); mask-image: url(/assets/ti-external-link.svg); }
 .ic-link { -webkit-mask-image: url(/assets/ti-link.svg); mask-image: url(/assets/ti-link.svg); }
+.ic-menu-2 { -webkit-mask-image: url(/assets/ti-menu-2.svg); mask-image: url(/assets/ti-menu-2.svg); }
+.ic-dots { -webkit-mask-image: url(/assets/ti-dots.svg); mask-image: url(/assets/ti-dots.svg); }
 .ic-link-off { -webkit-mask-image: url(/assets/ti-link-off.svg); mask-image: url(/assets/ti-link-off.svg); }
 .ic-share { -webkit-mask-image: url(/assets/ti-share.svg); mask-image: url(/assets/ti-share.svg); }
 .ic-eye { -webkit-mask-image: url(/assets/ti-eye.svg); mask-image: url(/assets/ti-eye.svg); }
@@ -313,4 +315,97 @@ table.files .row-actions { flex-wrap: nowrap; }
   table.files .date-col { display: none; }
   table.files .size-col { width: 84px; }
   table.files .actions-col { width: 180px; }
+}
+
+/* ---------- sign-in and first-start screens: banner on top of the card ---------- */
+.card.auth { max-width: 440px; padding: 0; overflow: hidden; margin-top: 40px; box-shadow: var(--shadow-lg); }
+.auth-banner { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; background: #010a1c; }
+.auth-body { padding: 22px 24px 24px; }
+.auth-body h1 { font-size: 1.15rem; margin-bottom: 14px; }
+.auth-body form button[type=submit] { width: 100%; justify-content: center; padding: 9px 14px; margin-top: 4px; }
+body[data-view="login-view"] .bar .brand, body[data-view="setup-view"] .bar .brand { visibility: hidden; }
+@media (max-width: 480px) { .card.auth { margin-top: 16px; } .auth-body { padding: 18px; } }
+
+/* ---------- header menu, action sheet ---------- */
+#menu-toggle { display: none; }
+.nav-menu { display: contents; }
+.row-actions .more, #new-folder { display: none; }
+.toolbar-break { display: none; }
+dialog.sheet { padding: 12px; }
+.sheet-title { margin: 4px 6px 10px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-actions { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.sheet-item { width: 100%; justify-content: flex-start; gap: 12px; padding: 12px; border: 0; background: none; border-radius: 10px; color: var(--text); text-decoration: none; }
+.sheet-item:hover { background: var(--hover); }
+.sheet-item .ic { color: var(--muted); }
+.sheet-item.danger, .sheet-item.danger .ic { color: var(--danger); }
+#sheet-cancel { width: 100%; justify-content: center; padding: 11px; }
+
+/* Touch screens have no hover: tooltips would stick after a tap. */
+@media (hover: none) {
+  [data-tip]:hover::after, [data-tip]:focus-visible::after { display: none; }
+}
+/* Form fields of at least 16px stop mobile Safari from zooming in on focus. */
+@media (pointer: coarse), (max-width: 760px) {
+  input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; }
+}
+
+/* ---------- phones ---------- */
+@media (max-width: 760px) {
+  main { padding: 12px; }
+  .bar { padding: 6px 10px; gap: 8px; }
+  .brand img { width: auto; height: 30px; }
+  .brand-name { display: none; }
+  .bar-right { gap: 2px; flex-wrap: nowrap; }
+  .bar-right > button, #session > .bell-wrap > button, #menu-toggle { padding: 8px; }
+  #theme > span:not(.ic) { display: none; }
+  #lang-label { font-size: .85rem; }
+  #session { display: flex; align-items: center; gap: 2px; }
+  #session[hidden] { display: none; }
+  #menu-toggle { display: inline-flex; }
+  .nav-menu { display: none; position: absolute; top: calc(100% + 4px); right: 8px; z-index: 35; flex-direction: column; align-items: stretch; gap: 2px; min-width: 230px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg); }
+  .nav-menu.open { display: flex; }
+  .nav-menu > button { justify-content: flex-start; gap: 10px; padding: 11px 12px; border-radius: 8px; }
+  .nav-menu > button:hover { background: var(--hover); }
+  .nav-menu > button[hidden] { display: none; }
+  #whoami { padding: 6px 12px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .bell-panel { position: fixed; left: 8px; right: 8px; top: 52px; width: auto; }
+
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 8px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; padding: 8px 10px; }
+
+  /* Row 1: path + select/trash/refresh. Row 2: search + create/upload, icons only. */
+  .toolbar { gap: 8px; margin-bottom: 10px; }
+  .toolbar .actions { display: contents; }
+  .crumbs { order: 1; flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+  .crumbs li { flex: none; }
+  .crumbs li:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #select-mode, #open-trash, #refresh { order: 2; }
+  .toolbar-break { display: block; order: 3; flex-basis: 100%; height: 0; }
+  #search-form { order: 4; flex: 1 1 0; min-width: 0; }
+  .search input { width: 100%; }
+  #readonly, #new-folder, #new-text, #upload-label, #upload-dir-label { order: 5; }
+  #mkdir-form { display: none !important; }
+  #new-folder:not([hidden]) { display: inline-flex; }
+  #new-text, #upload-label, #upload-dir-label { padding: 7px 9px; }
+  #new-text > span:not(.ic), #upload-label > span:not(.ic), #upload-dir-label > span:not(.ic), #readonly > span:not(.ic) { display: none; }
+
+  /* Rows: one "⋯" button opens all actions in a sheet. */
+  #file-table .actions-col { width: 52px; }
+  #file-table .row-actions > :not(.more) { display: none; }
+  #file-table .row-actions .more { display: inline-flex; padding: 8px; }
+  table.files.public .actions-col { width: 52px; }
+  table.files td, table.files th { padding-left: 10px; padding-right: 10px; }
+  dialog.sheet { margin: auto 0 0; width: 100%; max-width: 100%; border-radius: 16px 16px 0 0; border-bottom: 0; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .bulk-bar { flex-wrap: wrap; }
+
+  /* Trash and links: each row becomes a small card — full name, then details and actions. */
+  table.stack thead { display: none; }
+  table.stack tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 4px; border-bottom: 1px solid var(--line); }
+  table.stack td { border: 0; padding: 0; }
+  table.stack td:first-child { flex-basis: 100%; }
+  table.stack td:first-child .name { word-break: break-word; }
+  table.stack td:last-child { margin-left: auto; }
+  table.stack td:not(:first-child):not(:last-child) { font-size: .85rem; color: var(--muted); }
+  table.stack td.num { text-align: left; }
 }

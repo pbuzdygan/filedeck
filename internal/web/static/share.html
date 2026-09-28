@@ -6,7 +6,9 @@
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <title>Filedeck</title>
-<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/assets/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="stylesheet" href="/assets/app.css">
 <script src="/assets/theme.js"></script>
 <script src="/assets/share.js" defer></script>
@@ -14,7 +16,7 @@
 <body>
 <!-- Public link page: read-only, no account. The token stays in the URL path. -->
 <header class="bar">
-  <span class="brand"><img src="/assets/icon.svg" alt="" width="22" height="22">Filedeck</span>
+  <span class="brand"><picture><source media="(max-width: 760px)" srcset="/assets/logo-mark.png"><img src="/assets/icon-64.png" alt="Filedeck" width="22" height="22"></picture><span class="brand-name">Filedeck</span></span>
   <div class="bar-right">
     <button type="button" id="lang" class="link" data-i18n-title="lang.title" title="Language"><span class="ic ic-language" aria-hidden="true"></span><span id="lang-label">EN</span></button>
     <button type="button" id="theme" class="link" aria-label="Theme"><span class="ic ic-device-desktop" aria-hidden="true"></span><span>Auto</span></button>

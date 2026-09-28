@@ -1,6 +1,6 @@
 # Progress
 
-2026-09-28 — stage 1: core prototype; stage 2: accounts, sessions and HTTP API; stage 3: durable, resumable uploads; stage 4: web interface and Docker Compose deployment; stage 5: spaces, per-space permissions, rename and trash; stage 6: preview, editor, copy/move, drag & drop, theme, security review; stage 7: EN/PL, notifications, selection, folder upload; stage 8: reauth fix, share selftest, sorting, search; stage 9: public links; release preparation; stage 10: user deletion, tab order, file table layout.
+2026-09-28 — stage 1: core prototype; stage 2: accounts, sessions and HTTP API; stage 3: durable, resumable uploads; stage 4: web interface and Docker Compose deployment; stage 5: spaces, per-space permissions, rename and trash; stage 6: preview, editor, copy/move, drag & drop, theme, security review; stage 7: EN/PL, notifications, selection, folder upload; stage 8: reauth fix, share selftest, sorting, search; stage 9: public links; release preparation; stage 10: user deletion, tab order, file table layout; branding and PWA icons; stage 11: phone layout.
 
 ## Stage 1 — core
 
@@ -226,6 +226,22 @@ Based on the user's testing with several spaces, including SMB shares (upload an
 - **Found along the way:** the public-link token decoding accepted non-canonical base64 spellings of the same token (harmless — the secret is still required — but it made one test flaky, 1 in 16 runs). Decoding is now strict.
 
 Verification: Go tests, `TestTranslations`, Chromium 25 steps on an instance with two extra spaces — no console or CSP errors.
+
+## Branding and PWA icons
+
+The user chose the stacked "F" logo (the source images are in `branding/`, kept unchanged). A one-off generator (Chromium canvas in the Playwright image — no extra image tools) cropped the mark and wordmark from the full version, blended them into a matching navy background and rendered the banner (1500×500), a social preview (1280×640), favicons (ICO with 16/32/48 PNGs), PWA icons 192/512 plus a maskable 512 and the Apple touch icon 180. The results are the master copies in `branding/`. The application serves copies of the icons with `manifest.webmanifest` (CSP gains `manifest-src 'self'`, new content types for `.png`, `.ico`, `.webmanifest`, and a `/favicon.ico` route); the old `icon.svg` is gone. `TestIconsAndManifest` checks the manifest and that every referenced icon is embedded. Verified in Chromium: manifest parsed without errors, no installability errors, browser test without console or CSP errors. No service worker: the app is online-only by design (no offline caching of files or sessions). The banner (`filedeck-banner.png`) forms the top of the sign-in and first-start cards; the header logo is hidden on those screens so the name does not appear twice. Checked in light and dark theme, at phone width and on the setup screen; browser test without console or CSP errors.
+
+## Stage 11 — phone layout
+
+Based on the user's testing on a phone (the header and the file tools took half of the screen, row actions squeezed the names, the sign-in fields zoomed the page):
+
+- **Header** in one row below 760 px: the transparent mark (`logo-mark.png`, cropped from the transparent source logo) instead of the tile and name, language and theme as icons, the bell, and a "☰" menu (`menu-2`) holding the user name, Shared links, Users, Change password and Log out. The menu closes on an outside tap, on Escape and after choosing an item.
+- **File tools** in two rows: the path with select/trash/refresh, then search with new folder/new file/upload/upload folder as icons only; the inline "New folder" form becomes an icon that asks for the name. Space tabs scroll sideways instead of wrapping.
+- **Rows**: the six action icons collapse into one "⋯" (`dots`) that opens the same actions in a bottom sheet (`#action-sheet`); names get the freed width. Trash and shared links become stacked cards.
+- **Inputs** are 16 px on touch devices and narrow screens (mobile Safari zooms into smaller fields); tooltips are disabled where there is no hover (they stuck after a tap). User zoom stays allowed.
+- New `TestIconsHaveRules`: every icon used in HTML/JS has a CSS mask rule and every rule points to an embedded file (two new icons first rendered as solid squares). The browser test got a phone step (iPhone 13 profile): 16 px inputs, one-row header, compact toolbar, no sideways scrolling, menu and action sheet.
+
+Verification: Go tests, screenshots on an iPhone 13 profile in light and dark theme (files, menu, action sheet, trash, shared links, users), desktop unchanged, browser test 26 steps without console or CSP errors.
 
 ## Known limitations
 

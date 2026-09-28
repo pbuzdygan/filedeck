@@ -14,10 +14,11 @@ var files embed.FS
 
 // CSP allows only same-origin scripts and styles, no inline code, and requires
 // Trusted Types so that no HTML string sink can be used by the application.
-const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; " +
+const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; manifest-src 'self'; " +
 	"form-action 'none'; base-uri 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
 
-var types = map[string]string{".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8"}
+var types = map[string]string{".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8",
+	".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json"}
 
 func serve(w http.ResponseWriter, name string) {
 	data, err := fs.ReadFile(files, "static/"+name)
@@ -35,6 +36,9 @@ func serve(w http.ResponseWriter, name string) {
 
 // Index serves the single page.
 func Index(w http.ResponseWriter, _ *http.Request) { serve(w, "index.html") }
+
+// Favicon serves /favicon.ico, which browsers request at the site root.
+func Favicon(w http.ResponseWriter, _ *http.Request) { serve(w, "favicon.ico") }
 
 // Share serves the public link page; the token stays in the URL and is read by
 // share.js. The page is not indexed and never sends a Referer.

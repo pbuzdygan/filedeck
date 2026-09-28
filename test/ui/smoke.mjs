@@ -3,7 +3,7 @@
 // FILEDECK_ADMIN, FILEDECK_PASSWORD. Optional spaces, tested when present:
 // "nas" (writable host directory) and "archiwum" (mounted :ro).
 // Creates folders, files and user "jan" - use a throwaway instance.
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -368,6 +368,30 @@ if (orderedTabs.length > 1) {
   if (!orderedTabs[0].startsWith('My files') || await page.locator('#spaces .tab-sep').count() !== 1 || rest.join() !== [...rest].sort().join()) problems.push('tab order: ' + orderedTabs.join(', '));
 }
 step('long names cut, one row of actions, "My files" tab first');
+
+// ---- phone layout: one-row header with a menu, compact toolbar, actions in a sheet, no zoom on inputs
+{
+  const ctx = await browser.newContext({ ...devices['iPhone 13'], ignoreHTTPSErrors: true });
+  const phone = await ctx.newPage();
+  phone.on('pageerror', (e) => problems.push('phone pageerror: ' + e.message));
+  await phone.goto(O + '/');
+  if (await phone.evaluate(() => getComputedStyle(document.querySelector('#login-form input')).fontSize) !== '16px') problems.push('phone inputs smaller than 16px (Safari zooms in)');
+  await phone.locator('#login-form input[name=username]').fill(ADMIN);
+  await phone.locator('#login-form input[name=password]').fill(PASSWORD);
+  await phone.locator('#login-form button[type=submit]').click();
+  await phone.locator('#entries tr').first().waitFor();
+  const m = await phone.evaluate(() => ({ bar: document.querySelector('.bar').getBoundingClientRect().height, toolbar: document.querySelector('.toolbar').getBoundingClientRect().height, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth }));
+  if (m.bar > 70 || m.toolbar > 130 || m.overflow) problems.push('phone layout: ' + JSON.stringify(m));
+  await phone.locator('#menu-toggle').click();
+  await phone.getByRole('button', { name: 'Log out' }).waitFor();
+  await phone.keyboard.press('Escape');
+  await phone.locator('#entries tr').first().locator('.more').click();
+  await phone.locator('#action-sheet').getByRole('button', { name: 'Rename' }).waitFor();
+  await phone.screenshot({ path: 'out/phone.png' });
+  await phone.locator('#sheet-cancel').click();
+  await ctx.close();
+}
+step('phone: one-row header with menu, compact toolbar, action sheet');
 
 // ---- language: switch to Polish and back
 await page.locator('#lang').click();

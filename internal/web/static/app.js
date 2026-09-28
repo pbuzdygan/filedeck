@@ -85,6 +85,35 @@ const FILE_ICONS = [
 const fileIcon = (name) => (FILE_ICONS.find(([re]) => re.test(name)) || [null, 'file'])[1];
 // iconButton: icon-only action with a tooltip (data-tip) and an accessible name.
 const iconButton = (ic, label, onClick, extra = '') => el('button', { type: 'button', className: ('icon-action ' + extra).trim(), tip: label, on: { click: onClick } }, icon(ic));
+// rowActions renders actions as icons plus a "⋯" button that opens the same
+// actions in a bottom sheet; CSS shows one or the other by screen width.
+function rowActions(items, title) {
+  const box = el('span', { className: 'row-actions' });
+  for (const it of items) {
+    box.append(it.href
+      ? el('a', { href: it.href, download: it.download, className: 'icon-action', tip: it.label }, icon(it.icon))
+      : iconButton(it.icon, it.label, it.run, it.danger ? 'danger' : ''));
+  }
+  if (items.length) box.append(iconButton('dots', t('action.more'), () => openSheet(title, items), 'more'));
+  return box;
+}
+function openSheet(title, items) {
+  const dialog = $('action-sheet');
+  $('sheet-title').textContent = title;
+  const list = $('sheet-actions');
+  list.replaceChildren();
+  for (const it of items) {
+    const content = [icon(it.icon), el('span', { text: it.label })];
+    list.append(it.href
+      ? el('a', { href: it.href, download: it.download, className: 'button sheet-item', on: { click: () => dialog.close() } }, ...content)
+      : el('button', { type: 'button', className: 'sheet-item' + (it.danger ? ' danger' : ''), on: { click: () => { dialog.close(); it.run(); } } }, ...content));
+  }
+  dialog.showModal();
+}
+$('sheet-cancel').addEventListener('click', () => $('action-sheet').close());
+// A tap on the backdrop (outside the sheet) closes it.
+$('action-sheet').addEventListener('click', (ev) => { if (ev.target === $('action-sheet')) $('action-sheet').close(); });
+
 const describe = (e) => (e && e.code && dict['err.' + e.code] ? t('err.' + e.code) : (e && e.message) || String(e));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -167,6 +196,16 @@ function renderHistory() {
   badge.textContent = running ? '' : String(unseen);
   badge.classList.toggle('busy', running);
 }
+// Phones: account links fold into a menu under the "☰" button.
+function setMenu(open) {
+  $('nav-menu').classList.toggle('open', open);
+  $('menu-toggle').setAttribute('aria-expanded', String(open));
+}
+$('menu-toggle').addEventListener('click', (ev) => { ev.stopPropagation(); setMenu(!$('nav-menu').classList.contains('open')); });
+$('nav-menu').addEventListener('click', (ev) => { if (ev.target.closest('button')) setMenu(false); });
+document.addEventListener('click', (ev) => { if (!ev.target.closest('#nav-menu, #menu-toggle')) setMenu(false); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') setMenu(false); });
+
 $('bell').addEventListener('click', (ev) => {
   ev.stopPropagation();
   const panel = $('bell-panel');
@@ -238,6 +277,7 @@ function ask({ title, text = '', label = '', value = null, ok = t('common.ok') }
 const VIEWS = ['setup-view', 'login-view', 'files-view', 'editor-view', 'trash-view', 'links-view', 'admin-view'];
 function show(view) {
   for (const id of VIEWS) $(id).hidden = id !== view;
+  document.body.dataset.view = view; // the sign-in screens show the banner instead of the header logo
   $('session').hidden = view === 'login-view' || view === 'setup-view';
 }
 const currentView = () => VIEWS.find((id) => !$(id).hidden);
@@ -422,7 +462,7 @@ async function openFolder(space, path) {
     $('crumbs').replaceChildren();
     $('entries').replaceChildren();
     $('empty').hidden = true;
-    for (const id of ['readonly', 'mkdir-form', 'upload-label', 'upload-dir-label', 'open-trash', 'new-text']) $(id).hidden = true;
+    for (const id of ['readonly', 'mkdir-form', 'new-folder', 'upload-label', 'upload-dir-label', 'open-trash', 'new-text']) $(id).hidden = true;
     notify(t('files.no_space'));
     return;
   }
@@ -443,6 +483,7 @@ async function openFolder(space, path) {
   const ro = !writable();
   $('readonly').hidden = !ro;
   $('mkdir-form').hidden = ro || !can(PERM.create);
+  $('new-folder').hidden = ro || !can(PERM.create);
   $('upload-label').hidden = ro || !can(PERM.create);
   $('upload-dir-label').hidden = ro || !can(PERM.create);
   $('open-trash').hidden = ro || !can(PERM.modify);
@@ -532,19 +573,21 @@ function renderEntries() {
     else if (!canRead) name = el('span', { className: 'name', title: label }, icon(fileIcon(entry.name)), text);
     else if (searching) name = el('button', { type: 'button', className: 'link name', title: label, on: { click: () => showInFolder(parent, entry.name, true) } }, icon(fileIcon(entry.name)), text);
     else name = el('button', { type: 'button', className: 'link name', title: label, on: { click: () => openPreview(entry.name) } }, icon(fileIcon(entry.name)), text);
-    const actions = el('span', { className: 'row-actions' });
-    if (!entry.directory && canRead) actions.append(el('a', { href: '/api/content?' + q(space, target), download: entry.name, className: 'icon-action', tip: t('action.download') }, icon('download')));
+    // One list of actions: icons on wide screens, a "⋯" action sheet on phones.
+    const items = [];
+    if (!entry.directory && canRead) items.push({ icon: 'download', label: t('action.download'), href: '/api/content?' + q(space, target), download: entry.name });
     if (searching) {
-      actions.append(iconButton('folder', t('search.show_in_folder'), () => showInFolder(parent, entry.name, false)));
+      items.push({ icon: 'folder', label: t('search.show_in_folder'), run: () => showInFolder(parent, entry.name, false) });
     } else {
-      if (!entry.directory && canRead && canModify && isTextName(entry.name)) actions.append(iconButton('pencil', t('action.edit'), () => openEditor(space, target)));
-      if (canRead) actions.append(iconButton('copy', t('action.copy_move'), () => openTransfer([entry])));
-      if (canRead && (!entry.directory || can(PERM.list))) actions.append(iconButton('share', t('action.share'), () => openShare(entry, target)));
+      if (!entry.directory && canRead && canModify && isTextName(entry.name)) items.push({ icon: 'pencil', label: t('action.edit'), run: () => openEditor(space, target) });
+      if (canRead) items.push({ icon: 'copy', label: t('action.copy_move'), run: () => openTransfer([entry]) });
+      if (canRead && (!entry.directory || can(PERM.list))) items.push({ icon: 'share', label: t('action.share'), run: () => openShare(entry, target) });
       if (canModify) {
-        actions.append(iconButton('forms', t('action.rename'), () => renameEntry(entry, target)));
-        actions.append(iconButton('trash', t('action.delete'), () => trashEntries([entry]), 'danger'));
+        items.push({ icon: 'forms', label: t('action.rename'), run: () => renameEntry(entry, target) });
+        items.push({ icon: 'trash', label: t('action.delete'), run: () => trashEntries([entry]), danger: true });
       }
     }
+    const actions = rowActions(items, label);
     const box = el('input', { type: 'checkbox', checked: state.selected.has(entry.name), 'aria-label': t('select.item', { name: entry.name }) });
     box.addEventListener('click', (ev) => { ev.stopPropagation(); toggleSelect(index, ev.shiftKey); });
     const tr = el('tr', { className: state.selected.has(entry.name) ? 'selected' : '' },
@@ -675,20 +718,28 @@ async function trashEntries(entries) {
   openFolder(state.space, state.path);
 }
 
-$('mkdir-form').addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  const input = ev.target.elements.name;
-  const name = input.value.trim();
-  if (!validName(name)) { notify(t('err.name_slash')); return; }
+async function createFolder(name) {
+  if (!validName(name)) { notify(t('err.name_slash')); return false; }
   try {
     await api('POST', '/api/folders', { json: { space: state.space, path: join(state.path, name) } });
-    input.value = '';
     track(t('op.mkdir', { name })).done();
     notify(t('files.folder_created', { name }), 'ok');
     await openFolder(state.space, state.path);
+    return true;
   } catch (e) {
     notify(describe(e));
+    return false;
   }
+}
+$('mkdir-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const input = ev.target.elements.name;
+  if (await createFolder(input.value.trim())) input.value = '';
+});
+// Phones: the inline form is hidden; this button asks for the name instead.
+$('new-folder').addEventListener('click', async () => {
+  const name = await ask({ title: t('files.new_folder'), label: t('newfile.folder_label'), value: '', ok: t('files.create') });
+  if (name) await createFolder(name);
 });
 
 // ---------- trash ----------

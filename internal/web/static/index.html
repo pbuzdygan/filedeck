@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Filedeck</title>
-<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/assets/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/assets/manifest.webmanifest">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171c23" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-title" content="Filedeck">
 <link rel="stylesheet" href="/assets/app.css">
 <script src="/assets/theme.js"></script>
 <script src="/assets/app.js" defer></script>
@@ -13,7 +19,7 @@
 <body>
 <!-- Texts in English are the default; elements with data-i18n* are translated at startup (lang-*.json). -->
 <header class="bar">
-  <span class="brand"><img src="/assets/icon.svg" alt="" width="22" height="22">Filedeck</span>
+  <span class="brand"><picture><source media="(max-width: 760px)" srcset="/assets/logo-mark.png"><img src="/assets/icon-64.png" alt="Filedeck" width="22" height="22"></picture><span class="brand-name">Filedeck</span></span>
   <div class="bar-right">
     <button type="button" id="lang" class="link" data-i18n-title="lang.title" title="Language"><span class="ic ic-language" aria-hidden="true"></span><span id="lang-label">EN</span></button>
     <button type="button" id="theme" class="link" aria-label="Theme"><span class="ic ic-device-desktop" aria-hidden="true"></span><span>Auto</span></button>
@@ -26,17 +32,23 @@
           <p id="history-empty" class="muted center" data-i18n="notify.empty">No operations yet.</p>
         </section>
       </div>
+      <!-- On phones the items below fold into a menu opened by this button. -->
+      <button type="button" id="menu-toggle" class="link icon-only-link" aria-expanded="false" aria-controls="nav-menu" data-i18n-aria-label="nav.menu" aria-label="Menu"><span class="ic ic-menu-2" aria-hidden="true"></span></button>
+      <div id="nav-menu" class="nav-menu">
       <span id="whoami" class="muted"></span>
       <button type="button" id="open-links" class="link"><span class="ic ic-link" aria-hidden="true"></span><span data-i18n="nav.links">Shared links</span></button>
       <button type="button" id="open-admin" class="link" hidden><span class="ic ic-users" aria-hidden="true"></span><span data-i18n="nav.users">Users</span></button>
       <button type="button" id="open-password" class="link"><span class="ic ic-key" aria-hidden="true"></span><span data-i18n="nav.password">Change password</span></button>
       <button type="button" id="logout" class="link"><span class="ic ic-logout" aria-hidden="true"></span><span data-i18n="nav.logout">Log out</span></button>
+      </div>
     </nav>
   </div>
 </header>
 
 <main>
-  <section id="setup-view" class="card narrow" hidden>
+  <section id="setup-view" class="card narrow auth" hidden>
+    <img class="auth-banner" src="/assets/filedeck-banner.png" alt="Filedeck" width="1500" height="500">
+    <div class="auth-body">
     <h1 data-i18n="setup.title">First start</h1>
     <p class="muted"><span data-i18n="setup.hint">Create the administrator account. The setup code is in the server log:</span> <code>docker compose logs filedeck</code></p>
     <form id="setup-form" autocomplete="off">
@@ -46,21 +58,26 @@
       <label><span data-i18n="field.password_repeat">Repeat password</span> <input name="repeat" type="password" required minlength="12" autocomplete="new-password"></label>
       <button type="submit" class="primary" data-i18n="setup.submit">Create administrator</button>
     </form>
+    </div>
   </section>
 
-  <section id="login-view" class="card narrow" hidden>
+  <section id="login-view" class="card narrow auth" hidden>
+    <img class="auth-banner" src="/assets/filedeck-banner.png" alt="Filedeck" width="1500" height="500">
+    <div class="auth-body">
     <h1 data-i18n="login.title">Sign in</h1>
     <form id="login-form" autocomplete="on">
       <label><span data-i18n="login.username">Username</span> <input name="username" autocomplete="username" required autofocus></label>
       <label><span data-i18n="login.password">Password</span> <input name="password" type="password" autocomplete="current-password" required></label>
       <button type="submit" class="primary" data-i18n="login.submit">Sign in</button>
     </form>
+    </div>
   </section>
 
   <section id="files-view" hidden>
     <nav id="spaces" class="tabs" data-i18n-aria-label="files.spaces" aria-label="Spaces"></nav>
     <div class="toolbar">
       <ol id="crumbs" class="crumbs" data-i18n-aria-label="files.path" aria-label="Path"></ol>
+      <span class="toolbar-break" aria-hidden="true"></span>
       <div class="actions">
         <form id="search-form" class="search" role="search">
           <span class="ic ic-search" aria-hidden="true"></span>
@@ -71,6 +88,7 @@
           <input name="name" data-i18n-placeholder="files.new_folder" placeholder="New folder" data-i18n-aria-label="files.new_folder" aria-label="New folder" required maxlength="255">
           <button type="submit"><span class="ic ic-folder-plus" aria-hidden="true"></span><span data-i18n="files.create">Create</span></button>
         </form>
+        <button type="button" id="new-folder" class="icon-only" hidden data-i18n-aria-label="files.new_folder" data-tip-i18n="files.new_folder" aria-label="New folder"><span class="ic ic-folder-plus" aria-hidden="true"></span></button>
         <button type="button" id="new-text" hidden><span class="ic ic-file-plus" aria-hidden="true"></span><span data-i18n="files.new_file">New file</span></button>
         <label id="upload-label" class="button primary" hidden><span class="ic ic-upload" aria-hidden="true"></span><span data-i18n="files.upload">Upload files</span><input id="upload-input" type="file" multiple hidden></label>
         <label id="upload-dir-label" class="button" hidden><span class="ic ic-folder-up" aria-hidden="true"></span><span data-i18n="files.upload_folder">Upload folder</span><input id="upload-dir-input" type="file" webkitdirectory multiple hidden></label>
@@ -122,7 +140,7 @@
   <section id="trash-view" class="card" hidden>
     <div class="row between"><h1 id="trash-title">Trash</h1><button type="button" id="close-trash"><span class="ic ic-arrow-left" aria-hidden="true"></span><span data-i18n="trash.back">Back to files</span></button></div>
     <p class="muted" id="trash-hint"></p>
-    <table>
+    <table class="stack">
       <thead><tr><th data-i18n="trash.origin">Original location</th><th class="num" data-i18n="files.size">Size</th><th data-i18n="trash.deleted">Deleted</th><th></th></tr></thead>
       <tbody id="trash-entries"></tbody>
     </table>
@@ -138,7 +156,7 @@
       </div>
     </div>
     <p class="muted" data-i18n="links.hint">Anyone with a link can download the shared item without signing in. A link stops working when it expires, when it is revoked, or when the item is moved, renamed or deleted.</p>
-    <table>
+    <table class="stack">
       <thead><tr><th data-i18n="links.item">Shared item</th><th id="links-owner-col" data-i18n="links.owner" hidden>Owner</th><th data-i18n="links.expires">Expires</th><th data-i18n="links.status">Status</th><th></th></tr></thead>
       <tbody id="links-entries"></tbody>
     </table>
@@ -237,6 +255,12 @@
 </dialog>
 
 <div id="drop-overlay" class="drop-overlay" hidden><div><span class="ic ic-drag-drop" aria-hidden="true"></span><span id="drop-text"></span></div></div>
+
+<dialog id="action-sheet" class="sheet">
+  <p id="sheet-title" class="sheet-title"></p>
+  <div id="sheet-actions" class="sheet-actions"></div>
+  <button type="button" id="sheet-cancel" data-i18n="common.cancel">Cancel</button>
+</dialog>
 
 <dialog id="ask-dialog">
   <form id="ask-form" method="dialog">

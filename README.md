@@ -1,5 +1,7 @@
 # Filedeck
 
+![Filedeck](branding/filedeck-banner.png)
+
 A web file browser written from scratch as a successor to File Browser — with contracts and tests derived from an analysis of its vulnerabilities. Current features: web interface, accounts with revocable sessions, multiple spaces (the own "My files" space and host directories), per-space permissions, listing, downloading, creating folders, resumable uploads (also by dragging onto the window or a folder), preview of images, video, audio, PDF and text, a text editor with version control, copy and move between spaces (also for multiple selected items), whole-folder uploads, rename, trash, public links to files and folders (with an expiry date and an optional password), notifications with a history of recent operations, light/dark theme, and an interface in English (default) and Polish. Docker is the primary environment. Security model against File Browser's 62 advisories: [SECURITY.md](docs/SECURITY.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 
 The `list`, `read` and `put` commands run with the operating-system operator's privileges and are not an authentication boundary for network users — only `serve` plays that role.

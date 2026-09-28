@@ -253,7 +253,7 @@ func TestUsernamesCannotCollideByCaseOrUnicode(t *testing.T) {
 	s, _, _ := setup(t)
 	ctx := context.Background()
 	var err error
-	for _, name := range []string{"Admin", "ADMIN", "admin​", "admın", "admın", "ａdmin", "ad", "admin/../x", " admin"} {
+	for _, name := range []string{"Admin", "ADMIN", "admin\u200b", "admın", "admın", "ａdmin", "ad", "admin/../x", " admin"} {
 		if _, err = s.Create(ctx, name, secret, false, nil); !errors.Is(err, ErrInvalid) && !errors.Is(err, ErrExists) {
 			t.Errorf("%q accepted: %v", name, err)
 		}
