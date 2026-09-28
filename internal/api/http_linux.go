@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -39,6 +40,8 @@ type Config struct {
 	// AllowSetup lets a store without an active administrator start in setup
 	// mode: the first administrator is created with a one-time code (SetupCode).
 	AllowSetup bool
+	// Log receives security events; nil discards them.
+	Log *slog.Logger
 }
 type API struct {
 	store  *identity.Store
@@ -63,6 +66,10 @@ type API struct {
 	downloads chan struct{}
 	// timeout bounds each request (RequestTimeout; shorter in tests).
 	timeout time.Duration
+	log     *slog.Logger
+	// Two-factor setups waiting for the first code, per account.
+	pendingMu sync.Mutex
+	pending   map[string]pendingTOTP
 }
 
 // newSetupCode returns 80 random bits as four groups of Crockford-like base32.
@@ -107,7 +114,11 @@ func New(store *identity.Store, files *core.Service, c Config) (*API, error) {
 		return nil, errors.New("HTTPS origin required")
 	}
 	a := &API{store: store, files: files, config: c, origin: u, cookie: "__Host-filedeck", capacity: make(chan struct{}, 64), texts: make(chan struct{}, 4), logins: newLimiter(), mux: http.NewServeMux(),
-		unlocks: newLimiter(), unlockKey: make([]byte, 32), downloads: make(chan struct{}, maxPublicDownloads), timeout: RequestTimeout}
+		unlocks: newLimiter(), unlockKey: make([]byte, 32), downloads: make(chan struct{}, maxPublicDownloads), timeout: RequestTimeout,
+		log: c.Log, pending: make(map[string]pendingTOTP)}
+	if a.log == nil {
+		a.log = slog.New(slog.DiscardHandler)
+	}
 	rand.Read(a.unlockKey)
 	if c.InsecureLocal {
 		a.cookie = "filedeck-local"
@@ -147,6 +158,12 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; sandbox")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	if !a.config.InsecureLocal {
+		// Browsers must keep using HTTPS for this host (ignored for IP addresses
+		// and self-signed certificates). No includeSubDomains: other services
+		// may live under the same domain.
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		fail(w, 400, "invalid_peer")
@@ -175,6 +192,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if a.proxy.IsValid() {
 		if !a.proxy.Contains(peer) {
+			a.event(withClient(r, peer), slog.LevelWarn, "untrusted_proxy", "path", short(r.URL.Path))
 			fail(w, 403, "untrusted_proxy")
 			return
 		}
@@ -198,7 +216,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 503, "request_capacity")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), a.timeout)
+	ctx, cancel := context.WithTimeout(context.WithValue(r.Context(), clientKey{}, a.clientAddr(peer, r)), a.timeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 	deadline := time.Now().Add(a.timeout)
@@ -252,6 +270,12 @@ func classify(err error) (int, string) {
 		return 404, "not_found"
 	case errors.Is(err, identity.ErrLastAdmin):
 		return 409, "last_admin"
+	case errors.Is(err, identity.ErrTOTPRequired):
+		return 401, "totp_required"
+	case errors.Is(err, identity.ErrTOTPInvalid):
+		return 403, "totp_invalid"
+	case errors.Is(err, identity.ErrTOTPLocked):
+		return 429, "totp_locked"
 	case errors.Is(err, storage.ErrConflict), errors.Is(err, core.ErrOffset), errors.Is(err, core.ErrIncomplete), errors.Is(err, identity.ErrExists):
 		return 409, "conflict"
 	case errors.Is(err, storage.ErrLimit):
@@ -323,8 +347,8 @@ func (a *API) setCookie(w http.ResponseWriter, token string, expires time.Time) 
 	http.SetCookie(w, &http.Cookie{Name: a.cookie, Value: token, Path: "/", Secure: !a.config.InsecureLocal, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: maxAge, Expires: expires})
 }
 func (a *API) rate(w http.ResponseWriter, r *http.Request) bool {
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if !a.logins.allow(ip) {
+	if !a.logins.allow(limitKey(clientIP(r))) {
+		a.event(r, slog.LevelWarn, "rate_limited", "path", r.URL.Path)
 		w.Header().Set("Retry-After", "60")
 		fail(w, 429, "login_rate_limit")
 		return false
@@ -388,6 +412,7 @@ func (a *API) routes() {
 		var in struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
+			Code     string `json:"code"`
 		}
 		if !decode(w, r, &in) {
 			return
@@ -395,8 +420,16 @@ func (a *API) routes() {
 		// Login can evict or replace sessions; serialize this with publication too.
 		a.security.Lock()
 		defer a.security.Unlock()
-		login, err := a.store.Login(r.Context(), in.Username, in.Password)
+		login, err := a.store.Login(r.Context(), in.Username, in.Password, in.Code)
 		if err != nil {
+			switch {
+			case errors.Is(err, identity.ErrAuth):
+				a.event(r, slog.LevelWarn, "login_failed", "user", short(in.Username), "reason", "password")
+			case errors.Is(err, identity.ErrTOTPInvalid):
+				a.event(r, slog.LevelWarn, "login_failed", "user", short(in.Username), "reason", "code")
+			case errors.Is(err, identity.ErrTOTPLocked):
+				a.event(r, slog.LevelWarn, "login_failed", "user", short(in.Username), "reason", "code_locked")
+			}
 			problem(w, err)
 			return
 		}
@@ -409,6 +442,11 @@ func (a *API) routes() {
 			}
 		}
 		a.setCookie(w, login.Token, login.Expires)
+		if login.RecoveryUsed {
+			a.event(r, slog.LevelWarn, "login", "user", login.User.Username, "recovery_code", true)
+		} else {
+			a.event(r, slog.LevelInfo, "login", "user", login.User.Username)
+		}
 		reply(w, 200, login)
 	})
 	a.mux.HandleFunc("GET /api/setup", func(w http.ResponseWriter, r *http.Request) {
@@ -432,6 +470,7 @@ func (a *API) routes() {
 			problem(w, err)
 			return
 		}
+		a.event(r, slog.LevelInfo, "logout", "user", l.User.Username)
 		a.setCookie(w, "", time.Time{})
 		w.WriteHeader(204)
 	}, true, false))
@@ -447,9 +486,13 @@ func (a *API) routes() {
 			return
 		}
 		if err := a.store.ChangePassword(r.Context(), l.User.ID, in.Current, in.Next); err != nil {
+			if errors.Is(err, identity.ErrAuth) {
+				a.event(r, slog.LevelWarn, "reauth_failed", "user", l.User.Username)
+			}
 			passwordProblem(w, err)
 			return
 		}
+		a.event(r, slog.LevelInfo, "password_changed", "user", l.User.Username)
 		a.setCookie(w, "", time.Time{})
 		w.WriteHeader(204)
 	}, true, false))
@@ -686,6 +729,7 @@ func (a *API) routes() {
 	}, false, false))
 	a.adminRoutes()
 	a.linkRoutes()
+	a.totpRoutes()
 }
 
 // queryPath accepts exactly "space" and an optional "path", each once.
@@ -850,6 +894,9 @@ func (a *API) reauth(w http.ResponseWriter, r *http.Request, l identity.Login, s
 		return false
 	}
 	if err := a.store.VerifyPassword(r.Context(), l.User.ID, secret); err != nil {
+		if errors.Is(err, identity.ErrAuth) {
+			a.event(r, slog.LevelWarn, "reauth_failed", "user", l.User.Username)
+		}
 		passwordProblem(w, err)
 		return false
 	}
@@ -894,6 +941,7 @@ func (a *API) adminRoutes() {
 			problem(w, err)
 			return
 		}
+		a.event(r, slog.LevelInfo, "user_created", "user", l.User.Username, "target", u.Username, "admin", u.Admin)
 		reply(w, 201, u)
 	}, true, true))
 	a.mux.HandleFunc("PUT /api/users/{id}", a.auth(func(w http.ResponseWriter, r *http.Request, l identity.Login) {
@@ -922,6 +970,7 @@ func (a *API) adminRoutes() {
 			problem(w, err)
 			return
 		}
+		a.event(r, slog.LevelInfo, "user_updated", "user", l.User.Username, "target", u.Username, "admin", u.Admin, "disabled", u.Disabled)
 		reply(w, 200, u)
 	}, true, true))
 	// Deleting an account ends its sessions, clears its file permissions and so
@@ -947,6 +996,7 @@ func (a *API) adminRoutes() {
 			problem(w, err)
 			return
 		}
+		a.event(r, slog.LevelInfo, "user_deleted", "user", l.User.Username, "target", u.Username)
 		w.WriteHeader(204)
 	}, true, true))
 	a.mux.HandleFunc("POST /api/users/{id}/password", a.auth(func(w http.ResponseWriter, r *http.Request, l identity.Login) {
@@ -961,6 +1011,7 @@ func (a *API) adminRoutes() {
 			problem(w, err)
 			return
 		}
+		a.event(r, slog.LevelInfo, "password_reset", "user", l.User.Username, "target_id", r.PathValue("id"))
 		w.WriteHeader(204)
 	}, true, true))
 }
@@ -988,6 +1039,7 @@ func (a *API) completeSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(normalizeCode(in.Code)), []byte(normalizeCode(code))) != 1 {
+		a.event(r, slog.LevelWarn, "setup_failed")
 		fail(w, 403, "invalid_setup_code")
 		return
 	}
@@ -1003,6 +1055,7 @@ func (a *API) completeSetup(w http.ResponseWriter, r *http.Request) {
 	a.setupMu.Lock()
 	a.setup = ""
 	a.setupMu.Unlock()
+	a.event(r, slog.LevelInfo, "setup_completed", "user", u.Username)
 	reply(w, 201, u)
 }
 

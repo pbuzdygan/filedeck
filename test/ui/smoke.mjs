@@ -4,6 +4,7 @@
 // "nas" (writable host directory) and "archiwum" (mounted :ro).
 // Creates folders, files and user "jan" - use a throwaway instance.
 import { chromium, devices } from 'playwright';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,6 +32,15 @@ async function login(page, user, password) {
   await page.locator('#login-form input[name=password]').fill(password);
   await page.locator('#login-form button[type=submit]').click();
   await page.locator('#files-view').waitFor();
+}
+// RFC 6238 code for a base32 key, computed independently of the server.
+function totp(key) {
+  const bits = [...key.replace(/\s/g, '')].map((c) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c).toString(2).padStart(5, '0')).join('');
+  const secret = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const h = crypto.createHmac('sha1', secret).update(msg).digest();
+  return String((h.readUInt32BE(h[19] & 15) & 0x7fffffff) % 1000000).padStart(6, '0');
 }
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // The name cell holds an icon followed by the name.
@@ -289,6 +299,7 @@ await page.getByPlaceholder('New folder').fill('Wspólne');
 await page.getByRole('button', { name: 'Create' }).click();
 await row(page, 'Wspólne').locator('button.name').click();
 await page.waitForFunction(() => location.hash === '#/files/Wsp%C3%B3lne' || location.hash === '#/files/Wspólne');
+await page.locator('#crumbs', { hasText: 'Wspólne' }).waitFor(); // listing opened before uploading into it
 await page.setInputFiles('#upload-input', [{ name: 'plan.txt', mimeType: 'text/plain', buffer: Buffer.from('plan') }]);
 await row(page, 'plan.txt').waitFor();
 async function createLink(name, password) {
@@ -436,6 +447,58 @@ if (hasNas && !janTabs.some((t) => t.startsWith('nas'))) problems.push('granted 
 if (await jan.locator('#upload-label').isVisible() || await jan.locator('#mkdir-form').isVisible() || await jan.locator('#open-trash').isVisible()) problems.push('read-only user sees write controls');
 if (await jan.getByRole('button', { name: 'Move to trash' }).count() !== 0) problems.push('read-only user sees delete');
 step('read-only user: only granted spaces, no write controls');
+
+// ---- two-factor authentication: set up by the user, recovery code, admin reset
+await jan.getByRole('button', { name: 'Two-factor authentication' }).click();
+const totpDialog = jan.locator('#totp-dialog');
+await totpDialog.locator('#totp-status', { hasText: 'Off' }).waitFor();
+await totpDialog.locator('input[name=password]').fill('haslo-dla-jana-123');
+await totpDialog.getByRole('button', { name: 'Set up' }).click();
+await totpDialog.locator('#totp-setup').waitFor();
+const darkModules = await jan.locator('#totp-qr').evaluate((c) => {
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) if (d[i] < 128) n++;
+  return n;
+});
+if (darkModules < 1000) problems.push('QR code not drawn');
+const totpKey = await totpDialog.locator('#totp-key').textContent();
+await totpDialog.locator('input[name=code]').fill('000000' === totp(totpKey) ? '111111' : '000000');
+await totpDialog.getByRole('button', { name: 'Turn on' }).click();
+await toast(jan, 'Wrong or expired code').waitFor();
+await totpDialog.locator('input[name=code]').fill(totp(totpKey));
+await totpDialog.getByRole('button', { name: 'Turn on' }).click();
+await totpDialog.locator('#totp-code-list li').nth(9).waitFor();
+const recovery = await totpDialog.locator('#totp-code-list li').allTextContents();
+await totpDialog.locator('#totp-status', { hasText: '10 recovery codes left' }).waitFor();
+await jan.screenshot({ path: 'out/totp.png' });
+await totpDialog.getByRole('button', { name: 'Close' }).click();
+await jan.getByRole('button', { name: 'Log out' }).click();
+await jan.locator('#login-form input[name=username]').fill('jan');
+await jan.locator('#login-form input[name=password]').fill('haslo-dla-jana-123');
+await jan.locator('#login-form button[type=submit]').click();
+await jan.locator('#login-code-row').waitFor();
+await jan.getByRole('button', { name: 'Use a recovery code' }).click();
+await jan.locator('#login-form input[name=code]').fill(recovery[0]);
+await jan.locator('#login-form button[type=submit]').click();
+await jan.locator('#files-view').waitFor();
+await toast(jan, 'recovery code').waitFor();
+await page.getByRole('button', { name: 'Users' }).click();
+const janCard = page.locator('#users .user').filter({ hasText: 'jan' });
+await janCard.locator('.badge', { hasText: '2FA' }).waitFor();
+await page.locator('#reauth').fill(PASSWORD);
+await janCard.getByRole('button', { name: 'Turn off 2FA' }).click();
+await confirmDialog(page, 'Turn off 2FA');
+await janCard.locator('.badge', { hasText: '2FA' }).waitFor({ state: 'detached' });
+await page.locator('#close-admin').click();
+await jan.reload();
+await jan.getByRole('heading', { name: 'Sign in' }).waitFor();
+// This test signs in and confirms passwords faster than the login rate limit
+// (10 per minute per client) allows; wait for two attempts to refill
+// (this sign-in and the password confirmation of the next step).
+await jan.waitForTimeout(13000);
+await login(jan, 'jan', 'haslo-dla-jana-123');
+step('two-factor: QR setup, recovery code sign-in, admin reset ends sessions');
 
 // ---- delete a user: their session ends
 await page.getByRole('button', { name: 'Users' }).click();

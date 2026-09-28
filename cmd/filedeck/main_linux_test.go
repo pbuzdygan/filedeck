@@ -125,3 +125,31 @@ func TestSelftestPassesOnLocalDirectory(t *testing.T) {
 		t.Fatal("missing directory accepted")
 	}
 }
+
+func TestSecretKeyFromEnvironmentOrFile(t *testing.T) {
+	good := "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=" // 32 bytes of 7
+	file := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(file, []byte(good+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		value, file string
+		ok, empty   bool
+	}{
+		{"", "", true, true},
+		{good, "", true, false},
+		{" " + good + "\n", "", true, false},
+		{"", file, true, false},
+		{good, file, false, false},
+		{"BwcHBwcHBwcHBwcHBwcHBw==", "", false, false}, // 16 bytes
+		{"not base64!", "", false, false},
+		{"", file + ".missing", false, false},
+	} {
+		t.Setenv("FILEDECK_SECRET_KEY", c.value)
+		t.Setenv("FILEDECK_SECRET_KEY_FILE", c.file)
+		key, err := secretKey()
+		if (err == nil) != c.ok || (key == nil) != (c.empty || !c.ok) || (key != nil && len(key) != 32) {
+			t.Fatalf("%q %q: %v %v", c.value, c.file, key, err)
+		}
+	}
+}

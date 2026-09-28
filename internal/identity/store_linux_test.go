@@ -35,7 +35,7 @@ func setup(t *testing.T) (*Store, string, User) {
 }
 func login(t *testing.T, s *Store, name, p string) Login {
 	t.Helper()
-	l, e := s.Login(context.Background(), name, p)
+	l, e := s.Login(context.Background(), name, p, "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -108,7 +108,7 @@ func TestPasswordChangeRevokesAllSessions(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	if _, e := s.Login(ctx, "admin", secret); !errors.Is(e, ErrAuth) {
+	if _, e := s.Login(ctx, "admin", secret, ""); !errors.Is(e, ErrAuth) {
 		t.Fatal(e)
 	}
 	login(t, s, "admin", secret+"new")
@@ -133,7 +133,7 @@ func TestAccountDisablePermissionsAndLastAdministrator(t *testing.T) {
 	if _, e = s.Authenticate(l.Token); !errors.Is(e, ErrAuth) {
 		t.Fatal(e)
 	}
-	if _, e = s.Login(ctx, "reader", secret); !errors.Is(e, ErrAuth) {
+	if _, e = s.Login(ctx, "reader", secret, ""); !errors.Is(e, ErrAuth) {
 		t.Fatal(e)
 	}
 	if _, e = s.Update(u.ID, false, false, map[string]core.Permission{"files": core.List}); e != nil {
@@ -182,17 +182,17 @@ func TestLoginHasBoundedSessionsAndWork(t *testing.T) {
 	}
 	s.gate <- struct{}{}
 	s.gate <- struct{}{}
-	if _, e := s.Login(context.Background(), "admin", secret); !errors.Is(e, ErrBusy) {
+	if _, e := s.Login(context.Background(), "admin", secret, ""); !errors.Is(e, ErrBusy) {
 		t.Fatal(e)
 	}
 	<-s.gate
 	<-s.gate
 	for _, name := range []string{"unknown", "admin"} {
-		if _, e := s.Login(context.Background(), name, "wrong"); !errors.Is(e, ErrAuth) {
+		if _, e := s.Login(context.Background(), name, "wrong", ""); !errors.Is(e, ErrAuth) {
 			t.Fatal(e)
 		}
 	}
-	if _, e := s.Login(context.Background(), "admin", strings.Repeat("x", 1025)); !errors.Is(e, ErrAuth) {
+	if _, e := s.Login(context.Background(), "admin", strings.Repeat("x", 1025), ""); !errors.Is(e, ErrAuth) {
 		t.Fatal(e)
 	}
 }
@@ -281,7 +281,7 @@ func TestDeleteAccount(t *testing.T) {
 	if _, e = s.Authenticate(l.Token); !errors.Is(e, ErrAuth) {
 		t.Fatalf("session survived deletion: %v", e)
 	}
-	if _, e = s.Login(ctx, "reader", secret); !errors.Is(e, ErrAuth) {
+	if _, e = s.Login(ctx, "reader", secret, ""); !errors.Is(e, ErrAuth) {
 		t.Fatalf("deleted account can log in: %v", e)
 	}
 	if _, e = s.Delete(u.ID); !errors.Is(e, ErrNotFound) {

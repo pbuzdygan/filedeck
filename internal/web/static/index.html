@@ -39,6 +39,7 @@
       <button type="button" id="open-links" class="link"><span class="ic ic-link" aria-hidden="true"></span><span data-i18n="nav.links">Shared links</span></button>
       <button type="button" id="open-admin" class="link" hidden><span class="ic ic-users" aria-hidden="true"></span><span data-i18n="nav.users">Users</span></button>
       <button type="button" id="open-password" class="link"><span class="ic ic-key" aria-hidden="true"></span><span data-i18n="nav.password">Change password</span></button>
+      <button type="button" id="open-totp" class="link"><span class="ic ic-shield-lock" aria-hidden="true"></span><span data-i18n="nav.totp">Two-factor authentication</span></button>
       <button type="button" id="logout" class="link"><span class="ic ic-logout" aria-hidden="true"></span><span data-i18n="nav.logout">Log out</span></button>
       </div>
     </nav>
@@ -68,6 +69,10 @@
     <form id="login-form" autocomplete="on">
       <label><span data-i18n="login.username">Username</span> <input name="username" autocomplete="username" required autofocus></label>
       <label><span data-i18n="login.password">Password</span> <input name="password" type="password" autocomplete="current-password" required></label>
+      <div id="login-code-row" hidden>
+        <label><span data-i18n="login.code">Authentication code</span> <input name="code" autocomplete="one-time-code" inputmode="numeric" maxlength="16" spellcheck="false"></label>
+        <p class="muted small"><span data-i18n="login.code_hint">Enter the 6-digit code from your authenticator app.</span> <button type="button" id="login-recovery" class="link inline-link" data-i18n="login.use_recovery">Use a recovery code</button></p>
+      </div>
       <button type="submit" class="primary" data-i18n="login.submit">Sign in</button>
     </form>
     </div>
@@ -192,6 +197,39 @@
     <label><span data-i18n="password.new">New password (min. 12 characters)</span> <input name="next" type="password" autocomplete="new-password" required minlength="12"></label>
     <p class="muted" data-i18n="password.hint">All sessions end after the change.</p>
     <div class="row end"><button type="button" id="password-cancel" data-i18n="common.cancel">Cancel</button><button type="submit" class="primary" data-i18n="password.submit">Change</button></div>
+  </form>
+</dialog>
+
+<dialog id="totp-dialog">
+  <form id="totp-form" method="dialog">
+    <h2 data-i18n="totp.title">Two-factor authentication</h2>
+    <p id="totp-status" class="totp-status"></p>
+    <p class="muted" data-i18n="totp.intro">After signing in with your password you also enter a code from an authenticator app on your phone (e.g. Google Authenticator, Microsoft Authenticator, 2FAS, Aegis, Bitwarden).</p>
+    <div id="totp-manage">
+      <label><span data-i18n="password.current">Current password</span> <input name="password" type="password" autocomplete="current-password"></label>
+      <div class="row wrap">
+        <button type="button" id="totp-start" class="primary"></button>
+        <button type="button" id="totp-renew" data-i18n="totp.renew">New recovery codes</button>
+        <button type="button" id="totp-disable" class="danger" data-i18n="totp.disable">Turn off</button>
+      </div>
+    </div>
+    <div id="totp-setup" hidden>
+      <p data-i18n="totp.scan">1. Scan the code with your authenticator app:</p>
+      <canvas id="totp-qr" class="totp-qr" width="200" height="200" data-i18n-aria-label="totp.qr" aria-label="QR code" role="img"></canvas>
+      <p class="muted small"><span data-i18n="totp.key">Or type in this key:</span> <code id="totp-key" class="totp-key"></code></p>
+      <label><span data-i18n="totp.confirm_label">2. Enter the 6-digit code the app shows:</span> <input name="code" autocomplete="one-time-code" inputmode="numeric" maxlength="6" pattern="[0-9 ]*" spellcheck="false"></label>
+      <div class="row end"><button type="button" id="totp-confirm" class="primary" data-i18n="totp.confirm">Turn on</button></div>
+    </div>
+    <div id="totp-codes" hidden>
+      <p><strong data-i18n="totp.codes_title">Recovery codes</strong></p>
+      <p class="muted small" data-i18n="totp.codes_hint">If you lose your phone, sign in with one of these codes instead of the app code. Each code works once. Save them somewhere safe now — they are not shown again.</p>
+      <ol id="totp-code-list" class="totp-codes"></ol>
+      <div class="row wrap">
+        <button type="button" id="totp-copy"><span class="ic ic-copy" aria-hidden="true"></span><span data-i18n="totp.copy">Copy</span></button>
+        <button type="button" id="totp-download"><span class="ic ic-download" aria-hidden="true"></span><span data-i18n="totp.download">Download</span></button>
+      </div>
+    </div>
+    <div class="row end"><button type="button" id="totp-close" data-i18n="common.close">Close</button></div>
   </form>
 </dialog>
 

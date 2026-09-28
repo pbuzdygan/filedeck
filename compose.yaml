@@ -15,6 +15,9 @@ services:
       FILEDECK_ORIGIN: "${FILEDECK_ORIGIN:-https://localhost:${FILEDECK_PORT:-8443}}"
       FILEDECK_TLS_SELF_SIGNED: "${FILEDECK_TLS_SELF_SIGNED:-true}"
       FILEDECK_PROXY_CIDR: "${FILEDECK_PROXY_CIDR:-}"
+      # Encrypts two-factor secrets; keep it outside the data volume and back it up.
+      FILEDECK_SECRET_KEY: "${FILEDECK_SECRET_KEY:-}"
+      FILEDECK_SECRET_KEY_FILE: "${FILEDECK_SECRET_KEY_FILE:-}"
       # Modes of files and folders created through Filedeck (octal).
       FILEDECK_FILE_MODE: "${FILEDECK_FILE_MODE:-0640}"
       FILEDECK_DIR_MODE: "${FILEDECK_DIR_MODE:-0750}"

@@ -269,6 +269,7 @@ td.date-col { font-size: .88rem; }
 .ic-forms { -webkit-mask-image: url(/assets/ti-forms.svg); mask-image: url(/assets/ti-forms.svg); }
 .ic-home { -webkit-mask-image: url(/assets/ti-home.svg); mask-image: url(/assets/ti-home.svg); }
 .ic-key { -webkit-mask-image: url(/assets/ti-key.svg); mask-image: url(/assets/ti-key.svg); }
+.ic-shield-lock { -webkit-mask-image: url(/assets/ti-shield-lock.svg); mask-image: url(/assets/ti-shield-lock.svg); }
 .ic-language { -webkit-mask-image: url(/assets/ti-language.svg); mask-image: url(/assets/ti-language.svg); }
 .ic-list-check { -webkit-mask-image: url(/assets/ti-list-check.svg); mask-image: url(/assets/ti-list-check.svg); }
 .ic-loader-2 { -webkit-mask-image: url(/assets/ti-loader-2.svg); mask-image: url(/assets/ti-loader-2.svg); }
@@ -349,6 +350,19 @@ dialog.sheet { padding: 12px; }
   input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; }
 }
 
+/* ---------- narrower windows: account links fold into the "☰" menu ---------- */
+@media (max-width: 1200px) {
+  #session { display: flex; align-items: center; gap: 2px; }
+  #session[hidden] { display: none; }
+  #menu-toggle { display: inline-flex; }
+  .nav-menu { display: none; position: absolute; top: calc(100% + 4px); right: 8px; z-index: 35; flex-direction: column; align-items: stretch; gap: 2px; min-width: 230px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg); }
+  .nav-menu.open { display: flex; }
+  .nav-menu > button { justify-content: flex-start; gap: 10px; padding: 11px 12px; border-radius: 8px; }
+  .nav-menu > button:hover { background: var(--hover); }
+  .nav-menu > button[hidden] { display: none; }
+  #whoami { padding: 6px 12px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+}
+
 /* ---------- phones ---------- */
 @media (max-width: 760px) {
   main { padding: 12px; }
@@ -359,15 +373,6 @@ dialog.sheet { padding: 12px; }
   .bar-right > button, #session > .bell-wrap > button, #menu-toggle { padding: 8px; }
   #theme > span:not(.ic) { display: none; }
   #lang-label { font-size: .85rem; }
-  #session { display: flex; align-items: center; gap: 2px; }
-  #session[hidden] { display: none; }
-  #menu-toggle { display: inline-flex; }
-  .nav-menu { display: none; position: absolute; top: calc(100% + 4px); right: 8px; z-index: 35; flex-direction: column; align-items: stretch; gap: 2px; min-width: 230px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg); }
-  .nav-menu.open { display: flex; }
-  .nav-menu > button { justify-content: flex-start; gap: 10px; padding: 11px 12px; border-radius: 8px; }
-  .nav-menu > button:hover { background: var(--hover); }
-  .nav-menu > button[hidden] { display: none; }
-  #whoami { padding: 6px 12px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
   .bell-panel { position: fixed; left: 8px; right: 8px; top: 52px; width: auto; }
 
   .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 8px; }
@@ -409,3 +414,13 @@ dialog.sheet { padding: 12px; }
   table.stack td:not(:first-child):not(:last-child) { font-size: .85rem; color: var(--muted); }
   table.stack td.num { text-align: left; }
 }
+
+/* Two-factor authentication */
+.small { font-size: .85rem; }
+.link.inline-link { padding: 0; font-size: inherit; text-decoration: underline; }
+.totp-status { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.totp-status.on { color: var(--ok); }
+.totp-qr { display: block; margin: 8px auto; width: 200px; height: 200px; image-rendering: pixelated; border-radius: 8px; background: #fff; }
+.totp-key { word-break: break-all; user-select: all; }
+.totp-codes { columns: 2; column-gap: 24px; padding-left: 1.6em; margin: 8px 0 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.totp-codes li { padding: 2px 0; user-select: all; }

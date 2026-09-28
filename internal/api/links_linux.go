@@ -5,8 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -48,6 +48,7 @@ func (a *API) linkRoutes() {
 			problem(w, err)
 			return
 		}
+		a.event(r, slog.LevelInfo, "link_created", "user", l.User.Username, "link", link.ID, "space", in.Space, "password", in.Password != "", "hours", in.Hours)
 		// The token is shown only now; the server keeps just its hash.
 		reply(w, 201, map[string]any{"link": a.linkView(link, map[string]string{l.User.ID: l.User.Username}), "url": a.config.Origin + "/s/" + token})
 	}, false, false))
@@ -89,6 +90,7 @@ func (a *API) linkRoutes() {
 			problem(w, err)
 			return
 		}
+		a.event(r, slog.LevelInfo, "link_revoked", "user", l.User.Username, "link", r.PathValue("id"))
 		w.WriteHeader(204)
 	}, false, false))
 
@@ -102,8 +104,8 @@ func (a *API) linkRoutes() {
 		reply(w, 200, map[string]any{"needs_password": false, "name": s.Entry.Name, "directory": s.Directory, "size": s.Entry.Size, "modified": s.Entry.Modified, "expires": s.Expires})
 	}))
 	a.mux.HandleFunc("POST /api/public/{token}/unlock", a.public(func(w http.ResponseWriter, r *http.Request, s *core.Shared, _ bool) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-		if !a.unlocks.allow(ip) {
+		if !a.unlocks.allow(limitKey(clientIP(r))) {
+			a.event(r, slog.LevelWarn, "rate_limited", "path", "/api/public/unlock", "link", s.ID)
 			w.Header().Set("Retry-After", "60")
 			fail(w, 429, "login_rate_limit")
 			return
@@ -115,6 +117,9 @@ func (a *API) linkRoutes() {
 			return
 		}
 		if err := s.CheckPassword(r.Context(), in.Password); err != nil {
+			if errors.Is(err, core.ErrLinkPassword) {
+				a.event(r, slog.LevelWarn, "link_unlock_failed", "link", s.ID)
+			}
 			problem(w, err)
 			return
 		}

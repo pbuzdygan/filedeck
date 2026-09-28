@@ -79,9 +79,9 @@ The server is an LXC with 6 GB RAM, 3 CPUs and **no swap**. `/tmp` lives in RAM 
 - Never test on the user's volumes. Do not change `.env` without asking.
 - The user has their own reverse proxy — do not add a Caddy profile.
 
-## Status on 2026-09-28 (evening)
+## Status on 2026-09-29
 
-Stages 1–11 are done and deployed:
+Stages 1–12 are done and deployed:
 
 - core, accounts and sessions, resumable uploads;
 - UI and Compose;
@@ -92,11 +92,13 @@ Stages 1–11 are done and deployed:
 - user deletion, "My files" tab first, file table with cut long names (stage 10);
 - branding, PWA icons, banner on the sign-in screen; phone layout (stage 11);
 - public links (stage 9);
+- visitor address behind the proxy for rate limits, security log, HSTS, two-factor authentication (TOTP) managed by each user (stage 12);
 - release workflow (`dev`/`main` channels, amd64 + arm64).
 
-All Go tests pass, and the browser test passes in 26 steps (including a phone step) (without a `nas` space; with it, the host-space steps are added).
+All Go tests pass, and the browser test passes in 27 steps (including a phone step and two-factor authentication) (without a `nas` space; with it, the host-space steps are added).
 
 Next steps (only after the user confirms):
 
-1. The user will run `docker compose run --rm filedeck selftest /spaces/<name>` on a real SMB share. After the result, add a support statement. Mounting CIFS is impossible inside this LXC.
-2. Deployment behind the user's reverse proxy (`FILEDECK_ORIGIN` also determines the address of public links).
+1. Deployment behind the user's reverse proxy (Nginx Proxy Manager) following the README checklist (`FILEDECK_ORIGIN` also determines the address of public links), then an external check.
+2. The user will run `docker compose run --rm filedeck selftest /spaces/<name>` on a real SMB share. After the result, add a support statement. Mounting CIFS is impossible inside this LXC.
+3. First production release on `main`.

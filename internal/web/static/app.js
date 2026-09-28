@@ -285,6 +285,7 @@ const currentView = () => VIEWS.find((id) => !$(id).hidden);
 function sessionEnded(message = t('session.expired')) {
   state.csrf = null;
   state.user = null;
+  resetLogin();
   show('login-view');
   notify(message);
 }
@@ -340,15 +341,40 @@ function rerender() {
   else if (view === 'admin-view') openAdmin();
 }
 
+// Accounts with two-factor authentication get a second field after a correct
+// password; the form then sends the password again together with the code.
+function resetLogin() {
+  const f = $('login-form').elements;
+  f.password.value = '';
+  f.code.value = '';
+  f.code.inputMode = 'numeric';
+  $('login-code-row').hidden = true;
+}
+$('login-recovery').addEventListener('click', () => {
+  const code = $('login-form').elements.code;
+  code.inputMode = 'text';
+  code.value = '';
+  code.placeholder = 'XXXXX-XXXXX';
+  code.focus();
+});
 $('login-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = ev.target.elements;
+  const json = { username: f.username.value.trim(), password: f.password.value };
+  if (!$('login-code-row').hidden) json.code = f.code.value.trim();
   try {
-    await api('POST', '/api/auth/login', { json: { username: f.username.value.trim(), password: f.password.value } });
-    f.password.value = '';
+    const res = await api('POST', '/api/auth/login', { json });
+    resetLogin();
     await applySession(await api('GET', '/api/auth/me'));
+    if (res && res.recovery_used) notify(t('login.recovery_used'));
     await enter();
   } catch (e) {
+    if (e.code === 'totp_required') {
+      $('login-code-row').hidden = false;
+      f.code.focus();
+      return;
+    }
+    if (e.code === 'totp_invalid') { f.code.value = ''; f.code.focus(); }
     notify(describe(e));
   }
 });
@@ -375,6 +401,7 @@ $('logout').addEventListener('click', async () => {
   try { await api('POST', '/api/auth/logout'); } catch (e) { /* session is gone either way */ }
   state.csrf = null;
   state.user = null;
+  resetLogin();
   show('login-view');
   notify(t('session.logged_out'), 'ok');
 });
@@ -395,6 +422,129 @@ $('password-form').addEventListener('submit', async (ev) => {
   } catch (e) {
     notify(describe(e));
   }
+});
+
+// ---------- two-factor authentication ----------
+// Each person manages their own: set up (scan a QR code, confirm one code),
+// set up again on a new phone, renew recovery codes or turn it off. Every
+// change asks for the current password.
+
+function drawQR(canvas, qr) {
+  const quiet = 4; // the white margin scanners need
+  const scale = Math.max(1, Math.floor(200 / (qr.size + 2 * quiet)));
+  const side = (qr.size + 2 * quiet) * scale;
+  canvas.width = side;
+  canvas.height = side;
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, side, side);
+  g.fillStyle = '#000';
+  qr.rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) if (row[x] === '1') g.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
+  });
+}
+
+let totpCodes = [];
+function showRecoveryCodes(codes) {
+  totpCodes = codes;
+  $('totp-code-list').replaceChildren(...codes.map((c) => el('li', { text: c })));
+  $('totp-codes').hidden = false;
+}
+
+async function openTotp() {
+  let status;
+  try { status = await api('GET', '/api/auth/totp'); } catch (e) { notify(describe(e)); return; }
+  const f = $('totp-form').elements;
+  f.password.value = '';
+  f.code.value = '';
+  $('totp-setup').hidden = true;
+  $('totp-codes').hidden = true;
+  $('totp-manage').hidden = false;
+  totpCodes = [];
+  const box = $('totp-status');
+  box.className = 'totp-status' + (status.enabled ? ' on' : '');
+  box.replaceChildren(icon(status.enabled ? 'circle-check' : 'shield-lock'),
+    el('span', { text: status.enabled ? t('totp.on', { n: status.recovery_codes_left }) : t('totp.off') }));
+  $('totp-start').textContent = t(status.enabled ? 'totp.setup_again' : 'totp.setup');
+  $('totp-renew').hidden = !status.enabled;
+  $('totp-disable').hidden = !status.enabled;
+  if (!$('totp-dialog').open) $('totp-dialog').showModal();
+}
+function totpPassword() {
+  const input = $('totp-form').elements.password;
+  if (!input.value) { notify(t('admin.reauth_needed')); input.focus(); return null; }
+  return input.value;
+}
+$('open-totp').addEventListener('click', openTotp);
+$('totp-close').addEventListener('click', () => $('totp-dialog').close());
+$('totp-form').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  if (!$('totp-setup').hidden) $('totp-confirm').click();
+});
+$('totp-start').addEventListener('click', async () => {
+  const password = totpPassword();
+  if (!password) return;
+  try {
+    const res = await api('POST', '/api/auth/totp/setup', { json: { password } });
+    $('totp-form').elements.password.value = '';
+    drawQR($('totp-qr'), res.qr);
+    $('totp-key').textContent = res.key.replace(/(.{4})/g, '$1 ').trim();
+    $('totp-manage').hidden = true;
+    $('totp-codes').hidden = true;
+    $('totp-setup').hidden = false;
+    $('totp-form').elements.code.focus();
+  } catch (e) { notify(describe(e)); }
+});
+$('totp-confirm').addEventListener('click', async () => {
+  const input = $('totp-form').elements.code;
+  try {
+    const res = await api('POST', '/api/auth/totp/enable', { json: { code: input.value.replace(/\s/g, '') } });
+    input.value = '';
+    await openTotp();
+    $('totp-manage').hidden = true;
+    showRecoveryCodes(res.recovery_codes);
+    notify(t('totp.enabled'), 'ok');
+  } catch (e) {
+    input.value = '';
+    input.focus();
+    notify(describe(e));
+  }
+});
+$('totp-renew').addEventListener('click', async () => {
+  const password = totpPassword();
+  if (!password) return;
+  try {
+    const res = await api('POST', '/api/auth/totp/recovery', { json: { password } });
+    await openTotp();
+    $('totp-manage').hidden = true;
+    showRecoveryCodes(res.recovery_codes);
+    notify(t('totp.renewed'), 'ok');
+  } catch (e) { notify(describe(e)); }
+});
+$('totp-disable').addEventListener('click', async () => {
+  const password = totpPassword();
+  if (!password) return;
+  if (!await ask({ title: t('totp.disable_title'), text: t('totp.disable_text'), ok: t('totp.disable') })) return;
+  try {
+    await api('POST', '/api/auth/totp/disable', { json: { password } });
+    notify(t('totp.disabled'), 'ok');
+    await openTotp();
+  } catch (e) { notify(describe(e)); }
+});
+const codesText = () => t('totp.file_header', { user: state.user.username, host: location.host }) + '\n\n' + totpCodes.join('\n') + '\n';
+$('totp-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(codesText());
+    notify(t('totp.copied'), 'ok');
+  } catch (e) { notify(t('totp.copy_failed')); }
+});
+$('totp-download').addEventListener('click', () => {
+  const url = URL.createObjectURL(new Blob([codesText()], { type: 'text/plain' }));
+  const a = el('a', { href: url, download: 'filedeck-recovery-codes.txt' });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
 // ---------- browsing ----------
@@ -1434,13 +1584,27 @@ async function openAdmin() {
         openAdmin();
       } catch (e) { notify(describe(e)); }
     } } }, icon('trash'), el('span', { text: t('admin.delete') }));
+    // Two-factor authentication is set up by each person; an administrator
+    // can only turn it off (for someone who lost their phone).
+    const totp = !u.two_factor ? null : el('button', { type: 'button', on: { click: async () => {
+      const password = reauth();
+      if (!password) return;
+      if (!await ask({ title: t('admin.totp_reset_title'), text: t('admin.totp_reset_text', { name: u.username }), ok: t('admin.totp_reset') })) return;
+      try {
+        await api('DELETE', '/api/users/' + encodeURIComponent(u.id) + '/totp', { json: { reauth_password: password } });
+        notify(t('admin.totp_reset_done', { name: u.username }), 'ok');
+        openAdmin();
+      } catch (e) { notify(describe(e)); }
+    } } }, icon('shield-lock'), el('span', { text: t('admin.totp_reset') }));
+    const name = el('strong', { className: 'name', text: u.username });
+    if (u.two_factor) name.append(el('span', { className: 'badge', tip: t('admin.totp_on') }, icon('shield-lock'), '2FA'));
     list.append(el('article', { className: 'user' },
       el('div', { className: 'row between wrap' },
-        el('strong', { className: 'name', text: u.username }),
+        name,
         el('div', { className: 'row wrap' },
           el('label', { className: 'check' }, admin, ' ' + t('admin.administrator')),
           el('label', { className: 'check' }, disabled, ' ' + t('admin.disabled')),
-          save, remove)),
+          save, totp, remove)),
       grants.node,
       el('div', { className: 'row wrap' }, next, reset)));
   }

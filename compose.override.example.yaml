@@ -10,3 +10,14 @@ services:
       - /mnt/nas/wspolne:/spaces/nas
       # Read-only space: browsing and downloading only
       - /srv/archiwum:/spaces/archiwum:ro
+#
+# The two-factor secret key as a Docker secret instead of FILEDECK_SECRET_KEY
+# in .env (then it is not visible in "docker inspect"):
+#   services:
+#     filedeck:
+#       secrets: [filedeck_key]
+#       environment:
+#         FILEDECK_SECRET_KEY_FILE: /run/secrets/filedeck_key
+#   secrets:
+#     filedeck_key:
+#       file: ./filedeck.key   # openssl rand -base64 32 > filedeck.key; chmod 600

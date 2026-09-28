@@ -243,6 +243,21 @@ Based on the user's testing on a phone (the header and the file tools took half 
 
 Verification: Go tests, screenshots on an iPhone 13 profile in light and dark theme (files, menu, action sheet, trash, shared links, users), desktop unchanged, browser test 26 steps without console or CSP errors.
 
+## Stage 12 — hardening before public exposure, two-factor authentication
+
+From the final review before publishing Filedeck on the internet through the user's reverse proxy (Nginx Proxy Manager):
+
+- **Visitor address behind the proxy** — rate limits (sign-in, setup, reauth, link passwords) used the TCP peer, i.e. the proxy, so one attacker could block everyone. `X-Forwarded-For` is now read from peers inside `FILEDECK_PROXY_CIDR`, from the right, skipping hops inside the CIDR; it serves only rate limits and the log. IPv6 is limited per /64.
+- **Security log** — one `log/slog` line per event on stderr with `client=`: sign-ins (successful, failed with reason, with a recovery code), logout, rate limiting, failed reauth, password and account changes, two-factor changes, link creation/revocation/failed passwords, failed setup codes, connections from outside the proxy CIDR. Tests check that passwords, codes and secrets never appear.
+- **HSTS** `max-age=31536000` on HTTPS responses (not in local mode, no `includeSubDomains`).
+- **Two-factor authentication (TOTP)** — each person turns it on, sets it up again (new phone), renews recovery codes or turns it off under "Two-factor authentication" in the header menu, always with their current password. Setup shows a QR code (drawn on a canvas from a matrix computed on the server with `rsc.io/qr`, the first new dependency) and the key for manual entry; the first code confirms it and 10 single-use recovery codes are shown once (copy/download). The sign-in form asks for the code only after a correct password and accepts a recovery code. Replay protection, lockout after 5 wrong codes (5 min doubling to 1 h), other sessions end when it is turned on or off. Administrators see a "2FA" badge and can only turn it off for someone who lost their phone ("Turn off 2FA", with reauth); `reset-2fa USER` does the same from the command line (e.g. for the only administrator).
+- **Encrypted two-factor secrets** — optional `FILEDECK_SECRET_KEY` (or `FILEDECK_SECRET_KEY_FILE` for a Docker secret): TOTP secrets are stored with AES-256-GCM bound to the account and recovery code digests as HMAC with the key. Existing secrets are converted on start and the database file is rewritten (`bbolt.Compact` plus an atomic rename, repeated after a crash) — the first test showed that bbolt otherwise keeps the old plaintext in freed pages. A different or missing key stops the start with a clear message; `reset-2fa` works without it.
+- **Header** — the account links fold into the "☰" menu below 1200 px (not only on phones), because with the new item the header wrapped into three rows on medium-width windows.
+
+New tests: `TestSecretKeyProtectsTwoFactorSecrets`, `TestSecretKeyFromEnvironmentOrFile`, `TestTOTPMatchesRFC6238` (RFC 6238 vectors), `TestTwoFactorLifecycle`, `TestTwoFactorStrikesAndAdminReset`, `TestTwoFactorSetupLoginAndReset`, `TestClientAddressBehindProxyForLimitsAndLogs`, `TestHSTSOnlyForHTTPS`; a browser step for two-factor authentication (QR drawn, wrong code rejected, recovery code sign-in, administrator reset ends sessions).
+
+Verification: Go tests (also with `-race` for `api` and `identity`), `staticcheck`, `govulncheck`, browser test 27 steps without console or CSP errors; the security log checked on the test instance.
+
 ## Known limitations
 
 - Public links are read-only (no uploads through a link); search by name only (not by content); the operation history lives in the browser tab (not on the server).
@@ -252,7 +267,8 @@ Verification: Go tests, screenshots on an iPhone 13 profile in light and dark th
 
 ## Next stage (proposal)
 
-1. `selftest` on the user's real SMB share — then a support statement.
-2. Deployment behind the target reverse proxy (no separate Caddy profile — the user's decision); `FILEDECK_ORIGIN` also determines the address of public links.
+1. Deployment behind the user's reverse proxy (no separate Caddy profile — the user's decision) following the checklist in the README ("Behind a reverse proxy"); `FILEDECK_ORIGIN` also determines the address of public links. Then an external check: headers, TLS, redirects, sign-in limits and the security log.
+2. `selftest` on the user's real SMB share — then a support statement.
+3. First production release on `main`.
 
 The prototype is a foundation for further implementation, not a ready replacement for a production File Browser.

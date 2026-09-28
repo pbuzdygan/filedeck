@@ -53,6 +53,8 @@ type User struct {
 	Disabled bool   `json:"disabled"`
 	// Spaces maps a space name (or core.AnySpace) to granted permissions.
 	Spaces map[string]core.Permission `json:"spaces"`
+	// TwoFactor is derived from the stored account on every read.
+	TwoFactor bool `json:"two_factor"`
 	// Permissions is the pre-spaces format, read once and converted to "*".
 	Permissions core.Permission `json:"permissions,omitempty"`
 }
@@ -89,9 +91,10 @@ type password struct {
 	Digest    []byte `json:"digest"`
 }
 type account struct {
-	User     User     `json:"user"`
-	Password password `json:"password"`
-	Version  uint64   `json:"version"`
+	User     User          `json:"user"`
+	Password password      `json:"password"`
+	Version  uint64        `json:"version"`
+	TOTP     *secondFactor `json:"totp,omitempty"`
 }
 type session struct {
 	UserID   string    `json:"user_id"`
@@ -105,39 +108,47 @@ type Login struct {
 	CSRF    string    `json:"csrf"`
 	Expires time.Time `json:"expires"`
 	Token   string    `json:"-"`
+	// RecoveryUsed is set when this sign-in consumed a recovery code.
+	RecoveryUsed bool `json:"recovery_used,omitempty"`
 }
 type Store struct {
-	db    *bolt.DB
-	gate  chan struct{}
-	dummy password
-	now   func() time.Time
+	db      *bolt.DB
+	dir     string
+	gate    chan struct{}
+	dummy   password
+	now     func() time.Time
+	strikes strikes
+	// key protects two-factor secrets (see Protect); nil without one.
+	key []byte
 }
 
-// Open requires an existing private directory. A descriptor-relative O_NOFOLLOW
-// open prevents substitution of the database with a symlink or special file.
-func Open(directory string) (*Store, error) {
-	dir, err := filepath.Abs(directory)
-	if err != nil {
-		return nil, err
-	}
+// openDir opens the private state directory without following symlinks.
+func openDir(dir string) (int, error) {
 	fd, err := unix.Openat2(unix.AT_FDCWD, dir, &unix.OpenHow{Flags: unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC, Resolve: unix.RESOLVE_NO_SYMLINKS})
 	if err != nil {
-		return nil, err
+		return -1, err
 	}
-	defer unix.Close(fd)
 	var st unix.Stat_t
 	if err = unix.Fstat(fd, &st); err != nil {
-		return nil, err
+		unix.Close(fd)
+		return -1, err
 	}
 	if st.Uid != uint32(os.Geteuid()) || st.Mode&0777 != 0700 {
-		return nil, errors.New("identity directory must be private, owned by process user, mode 0700")
+		unix.Close(fd)
+		return -1, errors.New("identity directory must be private, owned by process user, mode 0700")
 	}
-	db, err := bolt.Open(filepath.Join(dir, "identity.db"), 0600, &bolt.Options{Timeout: time.Second, OpenFile: func(_ string, flags int, mode os.FileMode) (*os.File, error) {
-		n, e := unix.Openat(fd, "identity.db", flags|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, uint32(mode.Perm()))
+	return fd, nil
+}
+
+// openBolt opens a database file relative to the directory handle with
+// O_NOFOLLOW and requires a private regular file without hardlinks.
+func openBolt(fd int, dir, name string, extra int) (*bolt.DB, error) {
+	return bolt.Open(filepath.Join(dir, name), 0600, &bolt.Options{Timeout: time.Second, OpenFile: func(_ string, flags int, mode os.FileMode) (*os.File, error) {
+		n, e := unix.Openat(fd, name, flags|extra|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, uint32(mode.Perm()))
 		if e != nil {
 			return nil, e
 		}
-		f := os.NewFile(uintptr(n), "identity.db")
+		f := os.NewFile(uintptr(n), name)
 		var stat unix.Stat_t
 		if e = unix.Fstat(n, &stat); e != nil {
 			f.Close()
@@ -149,6 +160,21 @@ func Open(directory string) (*Store, error) {
 		}
 		return f, nil
 	}})
+}
+
+// Open requires an existing private directory. A descriptor-relative O_NOFOLLOW
+// open prevents substitution of the database with a symlink or special file.
+func Open(directory string) (*Store, error) {
+	dir, err := filepath.Abs(directory)
+	if err != nil {
+		return nil, err
+	}
+	fd, err := openDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer unix.Close(fd)
+	db, err := openBolt(fd, dir, "identity.db", 0)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +202,7 @@ func Open(directory string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Store{db: db, gate: make(chan struct{}, 2), now: time.Now}
+	s := &Store{db: db, dir: dir, gate: make(chan struct{}, 2), now: time.Now, strikes: strikes{list: make(map[string]strike)}}
 	s.dummy = makePassword("filedeck-dummy-password-not-an-account")
 	return s, nil
 }
@@ -222,6 +248,7 @@ func readAccount(tx *bolt.Tx, id string) (account, error) {
 	}
 	err := json.Unmarshal(data, &a)
 	a.User.normalize()
+	a.User.TwoFactor = a.TOTP != nil
 	return a, err
 }
 
@@ -271,6 +298,7 @@ func (s *Store) Users() ([]User, error) {
 				return e
 			}
 			a.User.normalize()
+			a.User.TwoFactor = a.TOTP != nil
 			list = append(list, a.User)
 			return nil
 		})
@@ -307,8 +335,11 @@ func expired(se session, now time.Time) bool {
 	return !now.Before(se.Expires) || !now.Before(se.LastSeen.Add(IdleLifetime))
 }
 
-func (s *Store) Login(ctx context.Context, name, secret string) (Login, error) {
-	if len(secret) > 1024 {
+// Login checks the password and, for accounts with two-factor authentication,
+// the code (TOTP or recovery code). Without a code such an account gets
+// ErrTOTPRequired, which is only returned after a correct password.
+func (s *Store) Login(ctx context.Context, name, secret, code string) (Login, error) {
+	if len(secret) > 1024 || len(code) > 64 {
 		return Login{}, ErrAuth
 	}
 	release, err := s.acquire(ctx)
@@ -328,6 +359,15 @@ func (s *Store) Login(ctx context.Context, name, secret string) (Login, error) {
 	if !valid || snapshot.User.ID == "" || snapshot.User.Disabled {
 		return Login{}, ErrAuth
 	}
+	if snapshot.TOTP != nil {
+		if code == "" {
+			return Login{}, ErrTOTPRequired
+		}
+		if s.strikes.locked(snapshot.User.ID, s.now()) {
+			return Login{}, ErrTOTPLocked
+		}
+	}
+	recoveryUsed := false
 	raw := make([]byte, 32)
 	if _, err = rand.Read(raw); err != nil {
 		return Login{}, err
@@ -346,6 +386,21 @@ func (s *Store) Login(ctx context.Context, name, secret string) (Login, error) {
 		}
 		if current.Version != snapshot.Version || current.User.Disabled {
 			return ErrAuth
+		}
+		if current.TOTP != nil {
+			before := len(current.TOTP.Recovery)
+			ok, e := s.useCode(current.TOTP, current.User.ID, code, now)
+			if e != nil {
+				return e
+			}
+			if !ok {
+				return ErrTOTPInvalid
+			}
+			recoveryUsed = len(current.TOTP.Recovery) < before
+			// The code is consumed without a new version: sessions stay.
+			if e = put(tx.Bucket(usersBucket), current.User.ID, current); e != nil {
+				return e
+			}
 		}
 		bucket := tx.Bucket(sessionsBucket)
 		type existing struct {
@@ -380,7 +435,17 @@ func (s *Store) Login(ctx context.Context, name, secret string) (Login, error) {
 		}
 		return put(bucket, key, se)
 	})
-	return Login{User: snapshot.User, Token: token, CSRF: csrf(token), Expires: se.Expires}, err
+	if snapshot.TOTP != nil {
+		if errors.Is(err, ErrTOTPInvalid) {
+			s.strikes.fail(snapshot.User.ID, now)
+		} else if err == nil {
+			s.strikes.clear(snapshot.User.ID)
+		}
+	}
+	if err != nil {
+		return Login{}, err
+	}
+	return Login{User: snapshot.User, Token: token, CSRF: csrf(token), Expires: se.Expires, RecoveryUsed: recoveryUsed}, nil
 }
 
 func (s *Store) Authenticate(token string) (Login, error) {

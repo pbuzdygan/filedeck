@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -25,6 +27,34 @@ import (
 type serverOptions struct {
 	listen, origin, cert, key, proxy string
 	insecure, selfSigned             bool
+	secretKey                        []byte
+}
+
+// secretKey reads the key protecting two-factor secrets from
+// FILEDECK_SECRET_KEY or the file named by FILEDECK_SECRET_KEY_FILE (e.g. a
+// Docker secret): 32 bytes in base64, as printed by "openssl rand -base64 32".
+// It comes only from the environment, never from a flag visible in ps.
+func secretKey() ([]byte, error) {
+	value := os.Getenv("FILEDECK_SECRET_KEY")
+	file := os.Getenv("FILEDECK_SECRET_KEY_FILE")
+	if value != "" && file != "" {
+		return nil, errors.New("set FILEDECK_SECRET_KEY or FILEDECK_SECRET_KEY_FILE, not both")
+	}
+	if file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("FILEDECK_SECRET_KEY_FILE: %w", err)
+		}
+		value = string(data)
+	}
+	if value == "" {
+		return nil, nil
+	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(value))
+	if err != nil || len(key) != identity.SecretKeySize {
+		return nil, errors.New("FILEDECK_SECRET_KEY must be 32 bytes in base64 - generate one with: openssl rand -base64 32")
+	}
+	return key, nil
 }
 
 func readSecret() (string, error) {
@@ -60,9 +90,11 @@ func accountCommand(state string, rest []string) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, store.Close()) }()
-	secret, err := readSecret()
-	if err != nil {
-		return err
+	secret := ""
+	if rest[0] != "reset-2fa" {
+		if secret, err = readSecret(); err != nil {
+			return err
+		}
 	}
 	if rest[0] == "bootstrap" {
 		_, err = store.Bootstrap(context.Background(), rest[1], secret)
@@ -73,6 +105,9 @@ func accountCommand(state string, rest []string) (err error) {
 		return err
 	}
 	for _, u := range users {
+		if u.Username == rest[1] && rest[0] == "reset-2fa" {
+			return store.DisableTOTP(u.ID, "")
+		}
 		if u.Username == rest[1] {
 			return store.ResetPassword(context.Background(), u.ID, secret)
 		}
@@ -107,7 +142,17 @@ func serve(files *core.Service, state string, limits core.Limits, o serverOption
 		return err
 	}
 	defer func() { err = errors.Join(err, store.Close()) }()
-	handler, err := api.New(store, files, api.Config{Origin: o.origin, InsecureLocal: o.insecure, ProxyCIDR: o.proxy, Limits: limits, AllowSetup: true})
+	unprotected, err := store.Protect(o.secretKey)
+	if err != nil {
+		return fmt.Errorf("FILEDECK_SECRET_KEY: %w", err)
+	}
+	if o.secretKey == nil {
+		fmt.Fprintf(os.Stderr, "Two-factor secrets are not encrypted (%d accounts use two-factor authentication): set FILEDECK_SECRET_KEY, see README.\n", unprotected)
+	} else {
+		fmt.Fprintln(os.Stderr, "Two-factor secrets are encrypted with FILEDECK_SECRET_KEY.")
+	}
+	handler, err := api.New(store, files, api.Config{Origin: o.origin, InsecureLocal: o.insecure, ProxyCIDR: o.proxy, Limits: limits, AllowSetup: true,
+		Log: slog.New(slog.NewTextHandler(os.Stderr, nil))})
 	if err != nil {
 		return err
 	}

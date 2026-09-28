@@ -1,6 +1,6 @@
 # Filedeck security — mapping of File Browser advisories
 
-Status on 2026-09-28. Source of the list: [register of 62 advisories](analysis/05-advisories.md) (GitHub Security Advisories of the File Browser project). For each report: the problem class, how Filedeck eliminates it, and how that is verified.
+Status on 2026-09-29. Source of the list: [register of 62 advisories](analysis/05-advisories.md) (GitHub Security Advisories of the File Browser project). For each report: the problem class, how Filedeck eliminates it, and how that is verified.
 
 Statuses:
 - ✅ **addressed** — a mechanism in the code and an automated test (test names in the "Evidence" column);
@@ -71,10 +71,10 @@ A link points to an object — device, inode and birth time — not to a path or
 | GHSA-7526-j432-6ppp | proxy auth + Execute permission | 🚫 | no proxy auth and no command execution | `TestNoProcessExecutionOrPlugins` |
 | GHSA-x8jc-jvqm-pm3f | signup grants Execute | 🚫 | no signup and no commands | `TestNoProcessExecutionOrPlugins` |
 | GHSA-5gg9-5g7w-hm73 | signup grants admin | ✅ | administrator only through bootstrap/setup code or the panel with reauth | `TestAdminRequiresRoleAndReauthentication`, `TestFirstRunSetupCodeCreatesAdministratorOnce` |
-| GHSA-xqp3-jq6g-x3qm | forged proxy auth header | ✅ | identity headers and `X-Forwarded-*` ignored | `TestLoginCookieLogoutAndReplayedSession`, `TestProxyBoundaryAndForwardedHeadersIgnored` |
+| GHSA-xqp3-jq6g-x3qm | forged proxy auth header | ✅ | identity headers ignored; `X-Forwarded-For` is read only from the trusted proxy CIDR, from the right, and only for rate limits and the log — never for identity | `TestLoginCookieLogoutAndReplayedSession`, `TestProxyBoundaryAndForwardedHeadersIgnored`, `TestClientAddressBehindProxyForLimitsAndLogs` |
 | GHSA-hxw8-4h9j-hq2r | password change without the current password | ✅ | requires the current password, versioned | `TestPasswordChangeRevokesAllSessions` |
 | GHSA-43mm-m3h2-3prc | username enumeration through timing | ⚠️ | dummy hash for non-existent accounts; timing distribution not measured | — |
-| GHSA-w5fm-68j4-fpc4 | login DoS | ✅ | attempt limits per address and globally, a gate of 2 Argon2 computations | `TestRateLimitAndBoundedBookkeeping`, `TestLoginHasBoundedSessionsAndWork` |
+| GHSA-w5fm-68j4-fpc4 | login DoS | ✅ | attempt limits per visitor address (the real one behind the proxy, IPv6 per /64) and globally, a gate of 2 Argon2 computations | `TestRateLimitAndBoundedBookkeeping`, `TestLoginHasBoundedSessionsAndWork`, `TestClientAddressBehindProxyForLimitsAndLogs` |
 | GHSA-7xwp-2cpp-p8r7 | replay after logout | ✅ | the session is removed on the server side | `TestLoginCookieLogoutAndReplayedSession` |
 | GHSA-rmwh-g367-mj4x | sensitive data in the URL | ✅ | the session token only in an `HttpOnly` cookie, CSRF in a header, passwords in the JSON body; URLs contain only the space and path. The exception is the token of a public link, which by design is the link itself: its page and API send `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`, and the token is stored only as a hash | code review (`internal/api`, `app.js`, `share.js`) |
 | GHSA-cm2r-rg7r-p7gg | unsafe passwords | ✅ | salted Argon2id, constant-time comparison, min. 12 characters | `TestBootstrapPersistenceAndSecretStorage` |
@@ -100,6 +100,19 @@ GHSA-39cx-23x9-5c8p, GHSA-8c9q-7855-wfxq, GHSA-jvpw-637p-h3pw, GHSA-m93h-4hw7-5q
 | GHSA-6jqf-mv7m-3q7p | request smuggling in a dependency | ✅ | HTTP only from the Go standard library; `govulncheck`: the code calls no known vulnerability | `govulncheck` v1.8.0 |
 | GHSA-jj2r-455p-5gvf | unsafe file permissions | ✅ | state `0700`, databases `0600`, `.filedeck` `0700`, staging `0600`, configurable modes for new files; image without a shell, `read_only`, `cap_drop: ALL` | `TestStateIsPrivateLockedAndDisjoint`, `TestMkdirUsesConfiguredMode`, `TestUnsafeMetadataDirectoryIsRejected` |
 
+## Hardening before public exposure (stage 12)
+
+Beyond the advisory register, the review before publishing Filedeck on the internet through a reverse proxy added:
+
+1. **Rate limits per visitor behind the proxy.** Before, every connection came from the proxy's address, so one attacker exhausting 10 attempts per minute blocked sign-in and link passwords for everyone. The visitor's address now comes from `X-Forwarded-For`, trusted only from `FILEDECK_PROXY_CIDR` and read from the right (a client cannot choose it). Evidence: `TestClientAddressBehindProxyForLimitsAndLogs`.
+2. **Security log.** Failed and successful sign-ins, rate limiting, failed re-entered passwords, account, two-factor and link changes, failed link passwords and connections from outside the proxy CIDR are logged with the visitor's address — for monitoring and fail2ban/CrowdSec. Secrets are never logged (checked by the tests). Evidence: `TestClientAddressBehindProxyForLimitsAndLogs`, `TestTwoFactorSetupLoginAndReset`.
+3. **HSTS** (`max-age=31536000`, without `includeSubDomains`) on every HTTPS response. Evidence: `TestHSTSOnlyForHTTPS`.
+4. **Two-factor authentication (TOTP)**, optional and managed by each account: RFC 6238 verified against the RFC test vectors, replay protection (an accepted step is never accepted again), single-use recovery codes stored as SHA-256, a lockout after 5 wrong codes in a row (5 min doubling to 1 h), `totp_required` returned only after a correct password, other sessions ended when it is turned on or off. Evidence: `TestTOTPMatchesRFC6238`, `TestTwoFactorLifecycle`, `TestTwoFactorStrikesAndAdminReset`, `TestTwoFactorSetupLoginAndReset`, browser test.
+
+5. **Encrypting two-factor secrets** with an optional key kept outside the data volume (`FILEDECK_SECRET_KEY` / `FILEDECK_SECRET_KEY_FILE`): AES-256-GCM bound to the account, recovery codes as HMAC; migration of existing secrets with a rewrite of the database file so no plaintext copy remains in freed pages; a wrong or missing key stops the start. Evidence: `TestSecretKeyProtectsTwoFactorSecrets` (also reads the raw database file), `TestSecretKeyFromEnvironmentOrFile`.
+
+New dependency: `rsc.io/qr` v0.2.0 (BSD, pure Go, no further dependencies) draws the setup QR code on the server as a matrix; the page renders it on a canvas, so the secret never reaches a third-party service.
+
 ## Additional findings from the review (stage 6)
 
 The review of the new features (preview, editor, copy) found and fixed:
@@ -113,6 +126,10 @@ Tools: `go vet`, `staticcheck` (clean), `govulncheck` (0 called vulnerabilities;
 ## Open risks
 
 - Account enumeration through response timing — only mitigated (GHSA-43mm).
+- Two-factor authentication is optional; accounts without it are protected by the password and the rate limits only. There is no lockout after failed passwords (only wrong codes lock), so that a stranger cannot lock people out.
+- Without `FILEDECK_SECRET_KEY`, TOTP secrets are stored in plaintext in `identity.db` and whoever reads the state directory or a backup of it can generate codes (the start log warns about it). With the key they are encrypted and recovery codes cannot be brute-forced offline; the key itself is in the environment of the running container, so someone with access to the Docker host or the process can still read both — the key protects copies of the data volume and backups.
+- Backups of `/data/state` made before the key was set still contain the plaintext secrets: after setting the key, set two-factor authentication up again (new secrets) if such backups may leak.
+- The global sign-in limit (20 attempts, then 1/s) lets a distributed attacker make signing in slower for everyone for as long as the attack lasts; limit connections in the proxy as well.
 - Changes to the source during a copy/move between spaces are not a snapshot; when moving, the source goes to the trash, so nothing is lost.
 - A copy job belongs to the account, not the session: logging out does not stop a copy (disabling the account and revoking permissions do).
 - PDF preview works without `sandbox` (browsers do not render PDFs in a sandbox); `nosniff` and a forced `application/pdf` prevent treating it as HTML.

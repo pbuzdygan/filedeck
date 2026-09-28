@@ -26,9 +26,10 @@ The container runs as UID 65532, with a read-only filesystem, no capabilities an
 | Task | Command |
 |---|---|
 | Reset a password (e.g. a forgotten administrator password) | `docker compose stop` → `printf '%s\n' 'new-password' \| docker compose run --rm -T filedeck reset-password admin` → `docker compose start` |
+| Turn off two-factor authentication for someone who lost their phone and recovery codes (e.g. the only administrator; otherwise an administrator does it in "Users") | `docker compose stop` → `docker compose run --rm filedeck reset-2fa admin` → `docker compose start` |
 | Update after code changes | `docker compose build && docker compose up -d` |
 | Update from a released image (`FILEDECK_IMAGE` in `.env`) | `docker compose pull && docker compose up -d` |
-| View logs (including detected spaces) | `docker compose logs -f filedeck` |
+| View logs (including detected spaces and security events) | `docker compose logs -f filedeck` |
 | Health | `docker compose ps` (STATUS column: `healthy`) |
 
 Account commands require a stopped service — a running instance locks the state. Without an active administrator the service starts in setup mode (code in the log).
@@ -55,6 +56,7 @@ Copy `.env.example` to `.env`. The most important ones:
 - `FILEDECK_ORIGIN` — exactly the address you type in the browser (a different `Host` gets 421). For access from the local network: `FILEDECK_BIND=0.0.0.0` and `FILEDECK_ORIGIN=https://<server-IP-or-name>:8443`; the certificate is generated for that name.
 - `FILEDECK_FILE_MODE` / `FILEDECK_DIR_MODE` — mode of files and folders created by Filedeck (default `0640`/`0750`, i.e. readable by the group). On SMB mounts the mode comes from the mount options and these settings have no effect.
 - `FILEDECK_USER` — UID:GID of the process (default `65532:65532`), see below.
+- `FILEDECK_SECRET_KEY` — encrypts the two-factor secrets (AES-256-GCM) and recovery codes (HMAC) in the account database, so a copy of the data volume or a backup alone reveals nothing. Generate it once with `openssl rand -base64 32` and **keep a copy outside the server** (e.g. a password manager). Existing secrets are encrypted on the next start and the database file is rewritten so no unencrypted copy stays in it. A different or missing key later stops the start with a clear message — set the right key, or turn two-factor authentication off for everyone with `reset-2fa`. Instead of the variable, `FILEDECK_SECRET_KEY_FILE` can point to a Docker secret (see `compose.override.example.yaml`); the key is then not visible in `docker inspect`. Without a key everything works, and the log says the secrets are not encrypted.
 
 ### Host directories (spaces)
 
@@ -86,7 +88,25 @@ FILEDECK_PROXY_CIDR=172.30.0.0/16     # subnet the proxy connects from
 FILEDECK_ORIGIN=https://files.example.org
 ```
 
-The address of public links is built from `FILEDECK_ORIGIN` — set it to the address under which recipients of links can reach Filedeck. Connections from outside `FILEDECK_PROXY_CIDR` are rejected and `X-Forwarded-*` headers are ignored (identity comes only from the session). The proxy must pass the original `Host` header. The container port should not be published on the host in that case.
+The address of public links is built from `FILEDECK_ORIGIN` — set it to the address under which recipients of links can reach Filedeck. Connections from outside `FILEDECK_PROXY_CIDR` are rejected. Identity comes only from the session; `X-Forwarded-For` is read only from the trusted proxy and only to find the visitor's address for rate limits and the security log (it is read from the right, skipping hops inside the CIDR, so an address a visitor adds themselves is never used).
+
+Checklist for the proxy:
+
+- pass the original `Host` header and set `X-Forwarded-For` (nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` — Nginx Proxy Manager, Caddy and Traefik do this by default);
+- do not publish the container port on the host (remove `ports:` or bind `127.0.0.1`), otherwise the proxy can be bypassed;
+- allow request bodies of at least 16 MB (an upload chunk is 8 MiB) and long read timeouts, so large downloads are not cut off;
+- access logs of the proxy contain public link tokens (`/s/<token>`, `/api/public/<token>`): keep them private or mask these paths;
+- HSTS: Filedeck sends `Strict-Transport-Security: max-age=31536000` itself (without `includeSubDomains`); enabling it in the proxy as well is harmless.
+
+### Security log
+
+Sign-ins and security-relevant changes are written to the container log, one line each, with the visitor's address — passwords, codes and tokens never are:
+
+```
+time=… level=WARN msg=login_failed client=203.0.113.5 user=anna reason=password
+```
+
+Events: `login`, `login_failed` (`reason=password|code|code_locked`), `logout`, `rate_limited`, `reauth_failed`, `password_changed`, `password_reset`, `user_created`, `user_updated`, `user_deleted`, `setup_failed`, `setup_completed`, `totp_enabled`, `totp_disabled`, `totp_recovery_codes_renewed`, `totp_reset`, `link_created`, `link_revoked`, `link_unlock_failed`, `untrusted_proxy`. A sign-in with a recovery code is logged as a warning (`recovery_code=true`). For fail2ban or CrowdSec, match `msg=(login_failed|link_unlock_failed|setup_failed) client=<HOST>`.
 
 Every CLI flag has a `FILEDECK_<NAME>` equivalent (e.g. `FILEDECK_TLS_CERT`, `FILEDECK_TLS_KEY` for your own certificate); a flag takes precedence over the variable.
 
@@ -120,13 +140,14 @@ The first administrator is created locally only; the API has no open registratio
   -listen 127.0.0.1:8080 -origin http://127.0.0.1:8080 -insecure-local serve
 ```
 
-The web interface is at `-origin`. `-insecure-local` allows HTTP on a loopback address only, for development. Otherwise `-origin https://…` is required, plus TLS (`-tls-cert`/`-tls-key` or `-tls-self-signed`) or an explicit `-proxy-cidr` of a reverse proxy terminating TLS. `X-Forwarded-*` headers are ignored, so behind a proxy the login limit is shared by the proxy's address. `-origin` must match the browser address exactly; a different `Host` gets 421.
+The web interface is at `-origin`. `-insecure-local` allows HTTP on a loopback address only, for development. Otherwise `-origin https://…` is required, plus TLS (`-tls-cert`/`-tls-key` or `-tls-self-signed`) or an explicit `-proxy-cidr` of a reverse proxy terminating TLS. Behind the proxy, `X-Forwarded-For` from `-proxy-cidr` determines the visitor's address for rate limits and the security log only. `-origin` must match the browser address exactly; a different `Host` gets 421.
 
 | Method and path | Description |
 |---|---|
-| `POST /api/auth/login` | `{"username","password"}` → session cookie and `csrf` token |
+| `POST /api/auth/login` | `{"username","password","code"}` → session cookie and `csrf` token; an account with two-factor authentication gets 401 `totp_required` after a correct password without `code` (a 6-digit code or a recovery code) |
 | `GET /api/auth/me`, `POST /api/auth/logout` | current session with the `csrf` token and upload limits, logout |
 | `POST /api/auth/password` | change password, revokes all sessions of the account |
+| `GET /api/auth/totp`, `POST /api/auth/totp/setup`, `POST /api/auth/totp/enable`, `POST /api/auth/totp/recovery`, `POST /api/auth/totp/disable` | own two-factor authentication: state and recovery codes left; a new secret (`{"password"}` → `key`, `uri`, `qr`); turning on with the first code (`{"code"}` → `recovery_codes`, other sessions end); new recovery codes and turning off (`{"password"}`) |
 | `GET /api/spaces` | the user's spaces with their permissions (an administrator sees all) |
 | `GET /api/files?space=&path=` | listing (`.` or missing = root of the space) |
 | `POST /api/folders` | `{"space","path"}` — new folder in an existing directory, never overwrites |
@@ -141,7 +162,7 @@ The web interface is at `-origin`. `-insecure-local` allows HTTP on a loopback a
 | `POST /api/uploads` | `{"space","path","size"}` → upload ID |
 | `PATCH /api/uploads/{id}` | `application/octet-stream` chunk, `Upload-Offset` header |
 | `GET`/`DELETE /api/uploads/{id}`, `POST /api/uploads/{id}/commit` | status (`state`, confirmed `offset`), cancellation, publication — a repeated commit returns the stored result |
-| `GET`/`POST /api/users`, `PUT`/`DELETE /api/users/{id}`, `POST /api/users/{id}/password` | administration; changes require `reauth_password`; deleting ends the account's sessions and removes its public links (not allowed for your own account or the last administrator) |
+| `GET`/`POST /api/users`, `PUT`/`DELETE /api/users/{id}`, `POST /api/users/{id}/password`, `DELETE /api/users/{id}/totp` | administration; changes require `reauth_password`; deleting ends the account's sessions and removes its public links (not allowed for your own account or the last administrator); `…/totp` turns off someone's two-factor authentication and ends their sessions |
 | `POST /api/links` | `{"space","path","expires_in_hours","password"}` → `url` of the public link (shown only once) |
 | `GET /api/links[?all=1]`, `DELETE /api/links/{id}` | own links with their `available` state (administrator: all), revocation |
 | `GET /s/{token}`, `GET /api/public/{token}[/files?path=\|/content?path=]`, `POST /api/public/{token}/unlock` | link page and API without signing in: information, folder listing, download, unlocking with a password |

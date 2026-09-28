@@ -116,7 +116,7 @@ func run(args []string) (err error) {
 	selfSigned := flags.Bool("tls-self-signed", selfSignedDefault, "create and reuse a self-signed certificate in state (FILEDECK_TLS_SELF_SIGNED)")
 	proxy := flags.String("proxy-cidr", env("PROXY_CIDR", ""), "trusted reverse-proxy peer CIDR; forwarded identity headers are ignored (FILEDECK_PROXY_CIDR)")
 	flags.Usage = func() {
-		fmt.Fprintln(flags.Output(), "Usage: filedeck [flags] list [PATH] | read PATH | put SOURCE TARGET | bootstrap USER | reset-password USER | serve | healthcheck | selftest DIR\nAccount commands read the password from stdin. Place flags before the command. Every flag can also be set as FILEDECK_<NAME>;\nFILEDECK_FILE_MODE / FILEDECK_DIR_MODE (octal, default 0640 / 0750) set modes of created files and folders.")
+		fmt.Fprintln(flags.Output(), "Usage: filedeck [flags] list [PATH] | read PATH | put SOURCE TARGET | bootstrap USER | reset-password USER | reset-2fa USER | serve | healthcheck | selftest DIR\nbootstrap and reset-password read the password from stdin; reset-2fa turns off two-factor authentication for a user who lost their device. Place flags before the command. Every flag can also be set as FILEDECK_<NAME>;\nFILEDECK_FILE_MODE / FILEDECK_DIR_MODE (octal, default 0640 / 0750) set modes of created files and folders;\nFILEDECK_SECRET_KEY (or FILEDECK_SECRET_KEY_FILE) encrypts two-factor secrets: openssl rand -base64 32.")
 		flags.PrintDefaults()
 	}
 	if err = flags.Parse(args); err != nil {
@@ -152,7 +152,7 @@ func run(args []string) (err error) {
 			return fmt.Errorf("root: %w", err)
 		}
 	}
-	if !((rest[0] == "list" && len(rest) <= 2) || (rest[0] == "read" && len(rest) == 2) || (rest[0] == "put" && len(rest) == 3) || ((rest[0] == "bootstrap" || rest[0] == "reset-password") && len(rest) == 2) || (rest[0] == "serve" && len(rest) == 1)) {
+	if !((rest[0] == "list" && len(rest) <= 2) || (rest[0] == "read" && len(rest) == 2) || (rest[0] == "put" && len(rest) == 3) || ((rest[0] == "bootstrap" || rest[0] == "reset-password" || rest[0] == "reset-2fa") && len(rest) == 2) || (rest[0] == "serve" && len(rest) == 1)) {
 		return errors.New("invalid command or arguments")
 	}
 	limits := core.DefaultLimits()
@@ -161,11 +161,15 @@ func run(args []string) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, svc.Close()) }()
-	if rest[0] == "bootstrap" || rest[0] == "reset-password" {
+	if rest[0] == "bootstrap" || rest[0] == "reset-password" || rest[0] == "reset-2fa" {
 		return accountCommand(*state, rest)
 	}
 	if rest[0] == "serve" {
-		return serve(svc, *state, limits, serverOptions{listen: *listen, origin: *origin, cert: *cert, key: *key, proxy: *proxy, insecure: *insecure, selfSigned: *selfSigned})
+		secret, e := secretKey()
+		if e != nil {
+			return e
+		}
+		return serve(svc, *state, limits, serverOptions{listen: *listen, origin: *origin, cert: *cert, key: *key, proxy: *proxy, insecure: *insecure, selfSigned: *selfSigned, secretKey: secret})
 	}
 	// The CLI runs with the operator's OS privileges. This is not authentication
 	// for remote users; network adapters must supply their own trusted subject.
