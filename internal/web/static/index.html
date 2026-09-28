@@ -32,7 +32,7 @@
           <p id="history-empty" class="muted center" data-i18n="notify.empty">No operations yet.</p>
         </section>
       </div>
-      <!-- On phones the items below fold into a menu opened by this button. -->
+      <!-- Account links live in a menu opened by this button. -->
       <button type="button" id="menu-toggle" class="link icon-only-link" aria-expanded="false" aria-controls="nav-menu" data-i18n-aria-label="nav.menu" aria-label="Menu"><span class="ic ic-menu-2" aria-hidden="true"></span></button>
       <div id="nav-menu" class="nav-menu">
       <span id="whoami" class="muted"></span>
@@ -169,26 +169,53 @@
   </section>
 
   <section id="admin-view" class="card" hidden>
-    <div class="row between"><h1 data-i18n="admin.title">Users</h1><button type="button" id="close-admin"><span class="ic ic-x" aria-hidden="true"></span><span data-i18n="common.close">Close</span></button></div>
-    <label class="reauth"><span data-i18n="admin.reauth">Your password (required for every change)</span>
-      <input id="reauth" type="password" autocomplete="current-password">
-    </label>
-    <p class="muted" data-i18n="admin.legend">Permissions: L – list, R – read, C – create (upload, folders), M – modify (rename, trash). The "all" row also covers spaces added later.</p>
-    <div id="users"></div>
-    <h2 data-i18n="admin.new_user">New user</h2>
-    <form id="create-user">
-      <div class="grid">
-        <label><span data-i18n="admin.name">Name</span> <input name="username" required pattern="[a-z0-9][a-z0-9._\-]{2,63}" data-i18n-title="field.username_rule" title="3–64 characters: lowercase letters, digits, . _ -"></label>
-        <label><span data-i18n="login.password">Password</span> <input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
-        <label class="check"><input type="checkbox" name="admin"> <span data-i18n="admin.administrator">Administrator</span></label>
+    <div class="row between wrap">
+      <h1 data-i18n="admin.title">Users</h1>
+      <div class="row wrap">
+        <button type="button" id="new-user" class="primary"><span class="ic ic-user-plus" aria-hidden="true"></span><span data-i18n="admin.new_user">New user</span></button>
+        <button type="button" id="close-admin"><span class="ic ic-arrow-left" aria-hidden="true"></span><span data-i18n="trash.back">Back to files</span></button>
       </div>
-      <div id="create-grants"></div>
-      <button type="submit" class="primary" data-i18n="admin.add">Add</button>
-    </form>
+    </div>
+    <table class="stack users-table">
+      <thead><tr><th data-i18n="admin.name">Name</th><th data-i18n="admin.role">Role</th><th data-i18n="admin.access">Access</th><th></th></tr></thead>
+      <tbody id="users"></tbody>
+    </table>
   </section>
 </main>
 
 <div id="toasts" class="toasts" aria-live="polite"></div>
+
+<dialog id="user-dialog" class="user-dialog">
+  <form id="user-form" method="dialog">
+    <h2 id="user-title"></h2>
+    <div id="user-new" class="grid">
+      <label><span data-i18n="admin.name">Name</span> <input name="username" pattern="[a-z0-9][a-z0-9._\-]{2,63}" data-i18n-title="field.username_rule" title="3–64 characters: lowercase letters, digits, . _ -" autocomplete="off" spellcheck="false"></label>
+      <label><span data-i18n="field.password_min">Password (min. 12 characters)</span> <input name="password" type="password" autocomplete="new-password" minlength="12"></label>
+    </div>
+    <div class="row wrap">
+      <label class="check"><input type="checkbox" name="admin"> <span data-i18n="admin.administrator">Administrator</span></label>
+      <label id="user-disabled-label" class="check"><input type="checkbox" name="disabled"> <span data-i18n="admin.disabled">Disabled</span></label>
+    </div>
+    <h3 data-i18n="admin.permissions">Permissions</h3>
+    <div id="user-grants"></div>
+    <p class="muted small" data-i18n="admin.legend">Permissions: L – list, R – read, C – create (upload, folders), M – modify (rename, trash). The “all” row also covers spaces added later.</p>
+    <details id="user-more">
+      <summary data-i18n="admin.more">Password, two-factor authentication, deletion</summary>
+      <div class="user-more">
+        <div class="row wrap">
+          <input name="next" type="password" autocomplete="new-password" minlength="12" data-i18n-placeholder="admin.new_password" placeholder="new password, min. 12 characters" data-i18n-aria-label="admin.new_password" aria-label="new password, min. 12 characters">
+          <button type="button" id="user-set-password"><span class="ic ic-key" aria-hidden="true"></span><span data-i18n="admin.set_password">Set password</span></button>
+        </div>
+        <div class="row wrap">
+          <button type="button" id="user-totp-reset"><span class="ic ic-shield-lock" aria-hidden="true"></span><span data-i18n="admin.totp_reset">Turn off 2FA</span></button>
+          <button type="button" id="user-delete" class="danger"><span class="ic ic-trash" aria-hidden="true"></span><span data-i18n="admin.delete">Delete user</span></button>
+        </div>
+      </div>
+    </details>
+    <label class="reauth-field"><span data-i18n="admin.reauth">Your password (confirms the change)</span> <input id="reauth" name="reauth" type="password" autocomplete="current-password"></label>
+    <div class="row end"><button type="button" id="user-cancel" data-i18n="common.cancel">Cancel</button><button type="submit" id="user-submit" class="primary"></button></div>
+  </form>
+</dialog>
 
 <dialog id="password-dialog">
   <form id="password-form" method="dialog">

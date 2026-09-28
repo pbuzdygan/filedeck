@@ -156,10 +156,24 @@ dialog.wide { width: min(1100px, calc(100% - 32px)); padding: 0; }
 .transfer:last-child { border-bottom: 0; }
 
 /* ---------- administration ---------- */
-.reauth { max-width: 360px; }
 .grid { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .grid label { margin: 0; }
-.user { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--surface); }
+/* Users: a table of accounts, editing in a dialog */
+.users-table tr.user { cursor: pointer; }
+@media (min-width: 761px) { .users-table td:last-child { width: 1%; text-align: right; } }
+.user-dialog .grid label { flex: 1 1 200px; }
+.user-dialog .grid input { width: 100%; }
+.users-table .name { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.users-table .name .badge { margin-left: 0; }
+.users-table td.access { color: var(--muted); font-size: .9rem; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+dialog.user-dialog { width: min(600px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
+.user-dialog h3 { margin: 16px 0 6px; font-size: 1rem; }
+.user-dialog details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+.user-dialog summary { cursor: pointer; color: var(--accent); }
+.user-more { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; }
+.user-more input { flex: 1; min-width: 200px; }
+.reauth-field { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 table.grants { width: auto; align-self: flex-start; }
 table.grants th, table.grants td { padding: 4px 10px; text-align: center; border-bottom: 0; background: none; }
 table.grants td.name, table.grants th:first-child { text-align: left; }
@@ -270,6 +284,7 @@ td.date-col { font-size: .88rem; }
 .ic-home { -webkit-mask-image: url(/assets/ti-home.svg); mask-image: url(/assets/ti-home.svg); }
 .ic-key { -webkit-mask-image: url(/assets/ti-key.svg); mask-image: url(/assets/ti-key.svg); }
 .ic-shield-lock { -webkit-mask-image: url(/assets/ti-shield-lock.svg); mask-image: url(/assets/ti-shield-lock.svg); }
+.ic-user-plus { -webkit-mask-image: url(/assets/ti-user-plus.svg); mask-image: url(/assets/ti-user-plus.svg); }
 .ic-language { -webkit-mask-image: url(/assets/ti-language.svg); mask-image: url(/assets/ti-language.svg); }
 .ic-list-check { -webkit-mask-image: url(/assets/ti-list-check.svg); mask-image: url(/assets/ti-list-check.svg); }
 .ic-loader-2 { -webkit-mask-image: url(/assets/ti-loader-2.svg); mask-image: url(/assets/ti-loader-2.svg); }
@@ -328,8 +343,6 @@ body[data-view="login-view"] .bar .brand, body[data-view="setup-view"] .bar .bra
 @media (max-width: 480px) { .card.auth { margin-top: 16px; } .auth-body { padding: 18px; } }
 
 /* ---------- header menu, action sheet ---------- */
-#menu-toggle { display: none; }
-.nav-menu { display: contents; }
 .row-actions .more, #new-folder { display: none; }
 .toolbar-break { display: none; }
 dialog.sheet { padding: 12px; }
@@ -350,18 +363,16 @@ dialog.sheet { padding: 12px; }
   input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; }
 }
 
-/* ---------- narrower windows: account links fold into the "☰" menu ---------- */
-@media (max-width: 1200px) {
-  #session { display: flex; align-items: center; gap: 2px; }
-  #session[hidden] { display: none; }
-  #menu-toggle { display: inline-flex; }
-  .nav-menu { display: none; position: absolute; top: calc(100% + 4px); right: 8px; z-index: 35; flex-direction: column; align-items: stretch; gap: 2px; min-width: 230px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg); }
-  .nav-menu.open { display: flex; }
-  .nav-menu > button { justify-content: flex-start; gap: 10px; padding: 11px 12px; border-radius: 8px; }
-  .nav-menu > button:hover { background: var(--hover); }
-  .nav-menu > button[hidden] { display: none; }
-  #whoami { padding: 6px 12px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
-}
+/* ---------- account links live in the "☰" menu at every width ---------- */
+#session { display: flex; align-items: center; gap: 2px; }
+#session[hidden] { display: none; }
+#menu-toggle { display: inline-flex; }
+.nav-menu { display: none; position: absolute; top: calc(100% + 4px); right: 8px; z-index: 35; flex-direction: column; align-items: stretch; gap: 2px; min-width: 230px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg); }
+.nav-menu.open { display: flex; }
+.nav-menu > button { justify-content: flex-start; gap: 10px; padding: 11px 12px; border-radius: 8px; }
+.nav-menu > button:hover { background: var(--hover); }
+.nav-menu > button[hidden] { display: none; }
+#whoami { padding: 6px 12px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 
 /* ---------- phones ---------- */
 @media (max-width: 760px) {

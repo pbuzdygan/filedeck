@@ -42,6 +42,11 @@ function totp(key) {
   const h = crypto.createHmac('sha1', secret).update(msg).digest();
   return String((h.readUInt32BE(h[19] & 15) & 0x7fffffff) % 1000000).padStart(6, '0');
 }
+// Account links live in the header menu ("☰").
+async function menu(page, name) {
+  await page.locator('#menu-toggle').click();
+  await page.locator('#nav-menu').getByRole('button', { name }).click();
+}
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // The name cell holds an icon followed by the name.
 const row = (page, name) => page.locator('#entries tr').filter({ has: page.locator('td:nth-child(2)', { hasText: new RegExp(escapeRe(name) + '$') }) });
@@ -310,7 +315,7 @@ async function createLink(name, password) {
   await dialog.getByRole('button', { name: 'Create link' }).click();
   await page.locator('#share-url').waitFor();
   const url = await page.locator('#share-url').inputValue();
-  await dialog.getByRole('button', { name: 'Close' }).click();
+  await dialog.locator('#share-cancel').click();
   return url;
 }
 const fileURL = await createLink('plan.txt', '');
@@ -335,7 +340,7 @@ await guest.locator('#file-name', { hasText: 'plan.txt' }).waitFor();
 await guest.screenshot({ path: 'out/share-file.png', fullPage: true });
 step('public links: password-protected folder and file, no account needed');
 
-await page.getByRole('button', { name: 'Shared links' }).click();
+await menu(page, 'Shared links');
 await page.getByRole('heading', { name: 'Shared links' }).waitFor();
 if (await page.locator('#links-entries tr').count() !== 2) problems.push('shared links list');
 await page.screenshot({ path: 'out/links.png', fullPage: true });
@@ -352,7 +357,7 @@ await confirmDialog(page, 'Rename', 'plan-v2.txt');
 await row(page, 'plan-v2.txt').waitFor();
 await guest.goto(fileURL);
 await guest.getByRole('heading', { name: 'This link is not available' }).waitFor();
-await page.getByRole('button', { name: 'Shared links' }).click();
+await menu(page, 'Shared links');
 await page.locator('#links-entries tr', { hasText: 'Not working' }).waitFor();
 await page.locator('#close-links').click();
 step('shared links: revoke, rename ends the link, status shown');
@@ -416,23 +421,27 @@ await page.locator('#lang').click();
 await page.locator('#lang-label', { hasText: 'EN' }).waitFor();
 step('language switch EN/PL, remembered');
 
-await page.getByRole('button', { name: 'Users' }).click();
+await menu(page, 'Users');
 await page.getByRole('heading', { name: 'Users' }).waitFor();
-await page.locator('#create-user input[name=username]').fill('jan');
-await page.locator('#create-user input[name=password]').fill('haslo-dla-jana-123');
+const userDialog = page.locator('#user-dialog');
+await page.getByRole('button', { name: 'New user' }).click();
+await userDialog.locator('input[name=username]').fill('jan');
+await userDialog.locator('input[name=password]').fill('haslo-dla-jana-123');
 if (hasNas) {
-  await page.locator('#create-grants').getByLabel('nas: List').check();
-  await page.locator('#create-grants').getByLabel('nas: Read').check();
+  await userDialog.locator('#user-grants').getByLabel('nas: List').check();
+  await userDialog.locator('#user-grants').getByLabel('nas: Read').check();
 }
-await page.getByRole('button', { name: 'Add' }).click();
-await toast(page, 'Enter your password').waitFor();
-// A wrong administrator password must not end the session (regression).
-await page.locator('#reauth').fill('definitely-not-the-password');
-await page.getByRole('button', { name: 'Add' }).click();
+await userDialog.getByRole('button', { name: 'Add' }).click();
+await toast(page, 'Enter your own password').waitFor();
+// A wrong administrator password must not end the session (regression) and keeps the dialog open.
+await userDialog.locator('#reauth').fill('definitely-not-the-password');
+await userDialog.getByRole('button', { name: 'Add' }).click();
 await toast(page, 'Wrong password').waitFor();
-if (!await page.locator('#admin-view').isVisible() || await page.locator('#login-view').isVisible()) problems.push('wrong admin password logged the user out');
-await page.locator('#reauth').fill(PASSWORD);
-await page.getByRole('button', { name: 'Add' }).click();
+if (!await userDialog.isVisible() || await page.locator('#login-view').isVisible()) problems.push('wrong admin password closed the dialog or logged the user out');
+await page.screenshot({ path: 'out/user-dialog.png' });
+await userDialog.locator('#reauth').fill(PASSWORD);
+await userDialog.getByRole('button', { name: 'Add' }).click();
+await userDialog.waitFor({ state: 'hidden' });
 await page.locator('#users .user').filter({ hasText: 'jan' }).waitFor();
 step('admin: create user with per-space grants (reauth required)');
 await page.screenshot({ path: 'out/admin.png', fullPage: true });
@@ -449,7 +458,7 @@ if (await jan.getByRole('button', { name: 'Move to trash' }).count() !== 0) prob
 step('read-only user: only granted spaces, no write controls');
 
 // ---- two-factor authentication: set up by the user, recovery code, admin reset
-await jan.getByRole('button', { name: 'Two-factor authentication' }).click();
+await menu(jan, 'Two-factor authentication');
 const totpDialog = jan.locator('#totp-dialog');
 await totpDialog.locator('#totp-status', { hasText: 'Off' }).waitFor();
 await totpDialog.locator('input[name=password]').fill('haslo-dla-jana-123');
@@ -466,14 +475,21 @@ const totpKey = await totpDialog.locator('#totp-key').textContent();
 await totpDialog.locator('input[name=code]').fill('000000' === totp(totpKey) ? '111111' : '000000');
 await totpDialog.getByRole('button', { name: 'Turn on' }).click();
 await toast(jan, 'Wrong or expired code').waitFor();
+// Toasts must stay above the modal dialog and its backdrop.
+const onTop = await toast(jan, 'Wrong or expired code').evaluate((t) => {
+  const r = t.getBoundingClientRect();
+  return t.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+});
+if (!onTop) problems.push('toast hidden behind the dialog');
 await totpDialog.locator('input[name=code]').fill(totp(totpKey));
 await totpDialog.getByRole('button', { name: 'Turn on' }).click();
 await totpDialog.locator('#totp-code-list li').nth(9).waitFor();
 const recovery = await totpDialog.locator('#totp-code-list li').allTextContents();
 await totpDialog.locator('#totp-status', { hasText: '10 recovery codes left' }).waitFor();
 await jan.screenshot({ path: 'out/totp.png' });
-await totpDialog.getByRole('button', { name: 'Close' }).click();
-await jan.getByRole('button', { name: 'Log out' }).click();
+await totpDialog.locator('#totp-close').click();
+await jan.waitForFunction(() => document.getElementById('toasts').parentElement === document.body);
+await menu(jan, 'Log out');
 await jan.locator('#login-form input[name=username]').fill('jan');
 await jan.locator('#login-form input[name=password]').fill('haslo-dla-jana-123');
 await jan.locator('#login-form button[type=submit]').click();
@@ -483,12 +499,15 @@ await jan.locator('#login-form input[name=code]').fill(recovery[0]);
 await jan.locator('#login-form button[type=submit]').click();
 await jan.locator('#files-view').waitFor();
 await toast(jan, 'recovery code').waitFor();
-await page.getByRole('button', { name: 'Users' }).click();
+await menu(page, 'Users');
 const janCard = page.locator('#users .user').filter({ hasText: 'jan' });
 await janCard.locator('.badge', { hasText: '2FA' }).waitFor();
-await page.locator('#reauth').fill(PASSWORD);
-await janCard.getByRole('button', { name: 'Turn off 2FA' }).click();
+await janCard.getByRole('button', { name: 'Edit jan' }).click();
+await userDialog.locator('#user-more summary').click();
+await userDialog.locator('#reauth').fill(PASSWORD);
+await userDialog.getByRole('button', { name: 'Turn off 2FA' }).click();
 await confirmDialog(page, 'Turn off 2FA');
+await userDialog.waitFor({ state: 'hidden' });
 await janCard.locator('.badge', { hasText: '2FA' }).waitFor({ state: 'detached' });
 await page.locator('#close-admin').click();
 await jan.reload();
@@ -501,11 +520,16 @@ await login(jan, 'jan', 'haslo-dla-jana-123');
 step('two-factor: QR setup, recovery code sign-in, admin reset ends sessions');
 
 // ---- delete a user: their session ends
-await page.getByRole('button', { name: 'Users' }).click();
+await menu(page, 'Users');
 await page.getByRole('heading', { name: 'Users' }).waitFor();
-if (await page.locator('#users .user').filter({ has: page.locator('strong.name', { hasText: new RegExp('^' + ADMIN + '$') }) }).getByRole('button', { name: 'Delete user' }).count() !== 0) problems.push('own account can be deleted from the UI');
-await page.locator('#reauth').fill(PASSWORD);
-await page.locator('#users .user').filter({ hasText: 'jan' }).getByRole('button', { name: 'Delete user' }).click();
+await page.locator('#users .user').filter({ has: page.locator('strong', { hasText: new RegExp('^' + ADMIN + '$') }) }).click();
+await userDialog.locator('#user-more summary').click();
+if (await userDialog.getByRole('button', { name: 'Delete user' }).isVisible()) problems.push('own account can be deleted from the UI');
+await userDialog.locator('#user-cancel').click();
+await page.locator('#users .user').filter({ hasText: 'jan' }).getByRole('button', { name: 'Edit jan' }).click();
+await userDialog.locator('#user-more summary').click();
+await userDialog.locator('#reauth').fill(PASSWORD);
+await userDialog.getByRole('button', { name: 'Delete user' }).click();
 await confirmDialog(page, 'Delete user');
 await page.locator('#users .user').filter({ hasText: 'jan' }).waitFor({ state: 'detached' });
 await jan.reload();
@@ -513,7 +537,7 @@ await jan.getByRole('heading', { name: 'Sign in' }).waitFor();
 await page.locator('#close-admin').click();
 step('admin: delete a user, their session ends');
 
-await page.getByRole('button', { name: 'Log out' }).click();
+await menu(page, 'Log out');
 await page.getByRole('heading', { name: 'Sign in' }).waitFor();
 await page.reload();
 await page.getByRole('heading', { name: 'Sign in' }).waitFor();

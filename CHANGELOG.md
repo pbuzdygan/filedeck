@@ -48,7 +48,8 @@ Filedeck is a web file browser written from scratch as a successor to File Brows
 - **"My files" always first** — among the space tabs, "My files" is always on the left, set apart by a separator; the other spaces follow in alphabetical order.
 - **Long file names no longer break the list** — very long names are cut with "…" (the full name appears when you point at it), so the size, date and action icons always stay in one tidy row, and the list uses more of the screen width.
 - **A welcoming sign-in screen** — the Filedeck banner sits on top of the sign-in and first-start forms, in both the light and the dark theme and on phones.
-- **A tidy top bar on smaller windows** — on tablets and narrower laptop windows the account links fold into the "☰" menu instead of wrapping over several rows.
+- **A tidy top bar** — the account links (shared links, users, password, two-factor authentication, log out) are gathered in one "☰" menu with your name at the top, the same on a computer, a tablet and a phone.
+- **Clearer user management** — the Users page is a compact list showing each person's role, access and badges (you, 2FA, disabled), with a "New user" button at the top. Adding and editing happen in a window that has everything in one place, including the field for your own password right above the Save button, so there is no more scrolling up and down however many users there are. A wrong password keeps the window open with what you entered.
 - **Comfortable on phones** — the top bar fits in one row (logo, language, theme, notifications and a menu with the rest), the file tools take two compact rows of icons, and each file has a single "⋯" button that opens all its actions at the bottom of the screen. Trash and shared links show as easy-to-read cards.
 - **Clearer row actions** — icons with a tooltip on hover; rename has its own recognisable icon.
 - **Polished light theme** with a new colour palette.
@@ -69,4 +70,5 @@ Filedeck is a web file browser written from scratch as a successor to File Brows
 - On phones, tapping the sign-in fields zoomed the page in, and it had to be zoomed out by hand. The page now stays as it is.
 - On touch screens, a tooltip stayed on the screen after tapping a button.
 - Tooltips of the buttons in the top bar went off-screen.
+- Messages (for example "Wrong password") shown while a window such as "Two-factor authentication" or "Share a link" was open appeared underneath the blurred background. They now always appear on top and can be closed.
 - After signing in, the alphabetically first space opened, even when it was read-only. Now the one you can work in opens.

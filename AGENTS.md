@@ -92,7 +92,7 @@ Stages 1–12 are done and deployed:
 - user deletion, "My files" tab first, file table with cut long names (stage 10);
 - branding, PWA icons, banner on the sign-in screen; phone layout (stage 11);
 - public links (stage 9);
-- visitor address behind the proxy for rate limits, security log, HSTS, two-factor authentication (TOTP) managed by each user (stage 12);
+- visitor address behind the proxy for rate limits, security log, HSTS, two-factor authentication (TOTP) managed by each user with optional encryption of its secrets (`FILEDECK_SECRET_KEY`), header menu at every width, Users page as a table with an edit dialog (stage 12);
 - release workflow (`dev`/`main` channels, amd64 + arm64).
 
 All Go tests pass, and the browser test passes in 27 steps (including a phone step and two-factor authentication) (without a `nas` space; with it, the host-space steps are added).

@@ -152,11 +152,30 @@ async function api(method, url, { json, body, headers = {} } = {}) {
 // recent operations (in memory, this browser tab) with their status.
 
 const MAX_TOASTS = 3;
+// A modal dialog lives in the browser's top layer, above everything else on
+// the page, so toasts move into the most recently opened dialog while one is
+// open (position: fixed keeps them in the corner) and back when it closes.
+const openDialogs = [];
+function placeToasts() {
+  const box = $('toasts');
+  const host = openDialogs[openDialogs.length - 1] || document.body;
+  if (box.parentElement !== host) host.append(box);
+  return box;
+}
+new MutationObserver((changes) => {
+  for (const { target } of changes) {
+    if (!(target instanceof HTMLDialogElement)) continue;
+    const i = openDialogs.indexOf(target);
+    if (i >= 0) openDialogs.splice(i, 1);
+    if (target.open) openDialogs.push(target);
+  }
+  placeToasts();
+}).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
 function toast(text, kind = 'ok') {
   const node = el('div', { className: 'toast ' + kind, role: kind === 'error' ? 'alert' : 'status' },
     icon(kind === 'error' ? 'alert-circle' : 'circle-check'), el('span', { text }),
     el('button', { type: 'button', className: 'toast-close', tip: t('common.close'), on: { click: () => node.remove() } }, icon('x')));
-  const box = $('toasts');
+  const box = placeToasts();
   box.append(node);
   // Never stack up over the page: the bell keeps the full history.
   while (box.children.length > MAX_TOASTS) box.firstElementChild.remove();
@@ -196,7 +215,7 @@ function renderHistory() {
   badge.textContent = running ? '' : String(unseen);
   badge.classList.toggle('busy', running);
 }
-// Phones: account links fold into a menu under the "☰" button.
+// Account links live in a menu under the "☰" button.
 function setMenu(open) {
   $('nav-menu').classList.toggle('open', open);
   $('menu-toggle').setAttribute('aria-expanded', String(open));
@@ -1505,9 +1524,9 @@ window.addEventListener('beforeunload', (ev) => { if (state.busy || editorDirty(
 // ---------- administration ----------
 
 function reauth() {
-  const value = $('reauth').value;
-  if (!value) { notify(t('admin.reauth_needed')); $('reauth').focus(); return null; }
-  return value;
+  const input = $('reauth');
+  if (!input.value) { notify(t('admin.reauth_needed')); input.focus(); return null; }
+  return input.value;
 }
 
 // grantsEditor renders a space × permission checkbox table and reads it back.
@@ -1537,94 +1556,134 @@ function grantsEditor(grants, spaces) {
   };
 }
 
-let createGrants = null;
+// The Users view is a compact table; adding and editing happen in one dialog
+// whose "your password" field sits right above its buttons.
+let adminSpaces = [];
+let editing = null; // user being edited, null when adding
+let editGrants = null;
+
+// grantSummary: "all: LRCM · nas: LR" from a grants map.
+function grantSummary(grants) {
+  const letters = (p) => PERM_KEYS.filter(([key]) => (p & PERM[key]) === PERM[key]).map(([, short]) => t(short)).join('');
+  const names = Object.keys(grants || {}).sort((a, b) => (a === '*' ? -1 : b === '*' ? 1 : a.localeCompare(b)));
+  return names.map((n) => (n === '*' ? t('admin.all_spaces') : spaceLabel(n)) + ': ' + letters(grants[n])).join(' · ');
+}
 
 async function openAdmin() {
   let users;
-  let spaces;
   try {
-    [users, spaces] = await Promise.all([api('GET', '/api/users'), api('GET', '/api/spaces')]);
+    [users, adminSpaces] = await Promise.all([api('GET', '/api/users'), api('GET', '/api/spaces')]);
   } catch (e) { notify(describe(e)); return; }
   show('admin-view');
-  const list = $('users');
-  list.replaceChildren();
+  const body = $('users');
+  body.replaceChildren();
   for (const u of users) {
-    const admin = el('input', { type: 'checkbox', checked: u.admin });
-    const disabled = el('input', { type: 'checkbox', checked: u.disabled });
-    const grants = grantsEditor(u.spaces || {}, spaces);
-    const save = el('button', { type: 'button', className: 'primary', text: t('admin.save'), on: { click: async () => {
-      const password = reauth();
-      if (!password) return;
-      try {
-        await api('PUT', '/api/users/' + encodeURIComponent(u.id), { json: { admin: admin.checked, disabled: disabled.checked, spaces: grants.read(), reauth_password: password } });
-        notify(t('admin.saved', { name: u.username }), 'ok');
-        if (u.id === state.user.id) { sessionEnded(t('admin.self_changed')); return; }
-        openAdmin();
-      } catch (e) { notify(describe(e)); }
-    } } });
-    const next = el('input', { type: 'password', autocomplete: 'new-password', minLength: 12, placeholder: t('admin.new_password'), 'aria-label': t('admin.new_password_for', { name: u.username }) });
-    const reset = el('button', { type: 'button', text: t('admin.set_password'), on: { click: async () => {
-      const password = reauth();
-      if (!password) return;
-      try {
-        await api('POST', '/api/users/' + encodeURIComponent(u.id) + '/password', { json: { new_password: next.value, reauth_password: password } });
-        next.value = '';
-        notify(t('admin.password_set', { name: u.username }), 'ok');
-        if (u.id === state.user.id) sessionEnded(t('admin.self_password'));
-      } catch (e) { notify(describe(e)); }
-    } } });
-    // Own account cannot be deleted (it would end this session); the server enforces it too.
-    const remove = u.id === state.user.id ? null : el('button', { type: 'button', className: 'danger', on: { click: async () => {
-      const password = reauth();
-      if (!password) return;
-      if (!await ask({ title: t('admin.delete_title'), text: t('admin.delete_text', { name: u.username }), ok: t('admin.delete') })) return;
-      try {
-        await api('DELETE', '/api/users/' + encodeURIComponent(u.id), { json: { reauth_password: password } });
-        notify(t('admin.deleted', { name: u.username }), 'ok');
-        openAdmin();
-      } catch (e) { notify(describe(e)); }
-    } } }, icon('trash'), el('span', { text: t('admin.delete') }));
-    // Two-factor authentication is set up by each person; an administrator
-    // can only turn it off (for someone who lost their phone).
-    const totp = !u.two_factor ? null : el('button', { type: 'button', on: { click: async () => {
-      const password = reauth();
-      if (!password) return;
-      if (!await ask({ title: t('admin.totp_reset_title'), text: t('admin.totp_reset_text', { name: u.username }), ok: t('admin.totp_reset') })) return;
-      try {
-        await api('DELETE', '/api/users/' + encodeURIComponent(u.id) + '/totp', { json: { reauth_password: password } });
-        notify(t('admin.totp_reset_done', { name: u.username }), 'ok');
-        openAdmin();
-      } catch (e) { notify(describe(e)); }
-    } } }, icon('shield-lock'), el('span', { text: t('admin.totp_reset') }));
-    const name = el('strong', { className: 'name', text: u.username });
+    const name = el('span', { className: 'name' }, el('strong', { text: u.username }));
+    if (u.id === state.user.id) name.append(el('span', { className: 'badge', text: t('admin.you') }));
     if (u.two_factor) name.append(el('span', { className: 'badge', tip: t('admin.totp_on') }, icon('shield-lock'), '2FA'));
-    list.append(el('article', { className: 'user' },
-      el('div', { className: 'row between wrap' },
-        name,
-        el('div', { className: 'row wrap' },
-          el('label', { className: 'check' }, admin, ' ' + t('admin.administrator')),
-          el('label', { className: 'check' }, disabled, ' ' + t('admin.disabled')),
-          save, totp, remove)),
-      grants.node,
-      el('div', { className: 'row wrap' }, next, reset)));
+    if (u.disabled) name.append(el('span', { className: 'badge danger', text: t('admin.disabled') }));
+    const summary = grantSummary(u.spaces);
+    body.append(el('tr', { className: 'user', on: { click: (ev) => { if (!ev.target.closest('button')) openUser(u); } } },
+      el('td', {}, name),
+      el('td', { text: u.admin ? t('admin.administrator') : t('admin.user') }),
+      el('td', { className: 'access', text: summary || t('admin.no_access'), title: summary }),
+      el('td', {}, el('span', { className: 'row-actions' }, iconButton('pencil', t('admin.edit_user', { name: u.username }), () => openUser(u))))));
   }
-  createGrants = grantsEditor({ files: PERM.list | PERM.read }, spaces);
-  $('create-grants').replaceChildren(createGrants.node);
 }
 
-$('open-admin').addEventListener('click', openAdmin);
-$('close-admin').addEventListener('click', () => { $('reauth').value = ''; enter(); });
-$('create-user').addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  const f = ev.target.elements;
+function openUser(u) {
+  editing = u;
+  const f = $('user-form');
+  f.reset();
+  const e = f.elements;
+  $('user-title').textContent = u ? t('admin.edit_title', { name: u.username }) : t('admin.new_user');
+  $('user-new').hidden = !!u;
+  e.username.required = !u;
+  e.password.required = !u;
+  $('user-disabled-label').hidden = !u;
+  $('user-more').hidden = !u;
+  $('user-more').open = false;
+  e.admin.checked = !!u?.admin;
+  e.disabled.checked = !!u?.disabled;
+  $('user-totp-reset').hidden = !u?.two_factor;
+  // Own account cannot be deleted (it would end this session); the server enforces it too.
+  $('user-delete').hidden = !u || u.id === state.user.id;
+  editGrants = grantsEditor(u ? u.spaces || {} : { files: PERM.list | PERM.read }, adminSpaces);
+  $('user-grants').replaceChildren(editGrants.node);
+  $('user-submit').textContent = u ? t('admin.save') : t('admin.add');
+  $('user-dialog').showModal();
+  (u ? $('reauth') : e.username).focus();
+}
+const closeUser = () => { $('reauth').value = ''; $('user-dialog').close(); };
+
+// userAction runs one confirmed change of the edited account; a wrong own
+// password keeps the dialog open so it can be corrected.
+async function userAction(run) {
   const password = reauth();
   if (!password) return;
   try {
-    await api('POST', '/api/users', { json: { username: f.username.value.trim(), password: f.password.value, admin: f.admin.checked, spaces: createGrants.read(), reauth_password: password } });
-    notify(t('admin.added', { name: f.username.value.trim() }), 'ok');
-    ev.target.reset();
+    await run(password);
+  } catch (e) {
+    notify(describe(e));
+    if (e.code === 'wrong_password') { $('reauth').select(); $('reauth').focus(); }
+  }
+}
+
+$('open-admin').addEventListener('click', openAdmin);
+$('close-admin').addEventListener('click', () => enter());
+$('new-user').addEventListener('click', () => openUser(null));
+$('user-cancel').addEventListener('click', closeUser);
+$('user-dialog').addEventListener('close', () => { $('reauth').value = ''; });
+$('user-form').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const e = ev.target.elements;
+  const u = editing;
+  userAction(async (password) => {
+    if (!u) {
+      const username = e.username.value.trim();
+      await api('POST', '/api/users', { json: { username, password: e.password.value, admin: e.admin.checked, spaces: editGrants.read(), reauth_password: password } });
+      closeUser();
+      notify(t('admin.added', { name: username }), 'ok');
+      openAdmin();
+      return;
+    }
+    await api('PUT', '/api/users/' + encodeURIComponent(u.id), { json: { admin: e.admin.checked, disabled: e.disabled.checked, spaces: editGrants.read(), reauth_password: password } });
+    closeUser();
+    notify(t('admin.saved', { name: u.username }), 'ok');
+    if (u.id === state.user.id) { sessionEnded(t('admin.self_changed')); return; }
     openAdmin();
-  } catch (e) { notify(describe(e)); }
+  });
+});
+$('user-set-password').addEventListener('click', () => {
+  const u = editing;
+  const next = $('user-form').elements.next;
+  if (next.value.length < 12) { notify(t('admin.new_password_short')); next.focus(); return; }
+  userAction(async (password) => {
+    await api('POST', '/api/users/' + encodeURIComponent(u.id) + '/password', { json: { new_password: next.value, reauth_password: password } });
+    next.value = '';
+    notify(t('admin.password_set', { name: u.username }), 'ok');
+    if (u.id === state.user.id) { closeUser(); sessionEnded(t('admin.self_password')); }
+  });
+});
+$('user-totp-reset').addEventListener('click', () => {
+  const u = editing;
+  userAction(async (password) => {
+    if (!await ask({ title: t('admin.totp_reset_title'), text: t('admin.totp_reset_text', { name: u.username }), ok: t('admin.totp_reset') })) return;
+    await api('DELETE', '/api/users/' + encodeURIComponent(u.id) + '/totp', { json: { reauth_password: password } });
+    closeUser();
+    notify(t('admin.totp_reset_done', { name: u.username }), 'ok');
+    openAdmin();
+  });
+});
+$('user-delete').addEventListener('click', () => {
+  const u = editing;
+  userAction(async (password) => {
+    if (!await ask({ title: t('admin.delete_title'), text: t('admin.delete_text', { name: u.username }), ok: t('admin.delete') })) return;
+    await api('DELETE', '/api/users/' + encodeURIComponent(u.id), { json: { reauth_password: password } });
+    closeUser();
+    notify(t('admin.deleted', { name: u.username }), 'ok');
+    openAdmin();
+  });
 });
 
 start();
