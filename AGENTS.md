@@ -80,7 +80,7 @@ The server is an LXC with 6 GB RAM, 3 CPUs and **no swap**. `/tmp` lives in RAM 
 
 ## Status on 2026-09-28 (evening)
 
-Stages 1–9 are done and deployed:
+Stages 1–10 are done and deployed:
 
 - core, accounts and sessions, resumable uploads;
 - UI and Compose;
@@ -88,10 +88,11 @@ Stages 1–9 are done and deployed:
 - preview, editor, copy and move, theme;
 - EN/PL, notifications, selection, folder upload;
 - reauth fix, `selftest`, sorting and search;
+- user deletion, "My files" tab first, file table with cut long names (stage 10);
 - public links (stage 9);
 - release workflow (`dev`/`main` channels, amd64 + arm64).
 
-All Go tests pass, and the browser test passes in 23 steps (without a `nas` space; with it, the host-space steps are added).
+All Go tests pass, and the browser test passes in 25 steps (without a `nas` space; with it, the host-space steps are added).
 
 Next steps (only after the user confirms):
 

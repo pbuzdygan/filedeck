@@ -93,13 +93,13 @@
       </div>
     </div>
     <div id="drop" class="card list">
-      <table id="file-table">
+      <table id="file-table" class="files">
         <thead><tr>
           <th class="sel-col"><input type="checkbox" id="select-all" data-i18n-aria-label="select.all" aria-label="Select all"></th>
           <th><button type="button" class="sort" data-sort="name"><span data-i18n="files.name">Name</span><span class="sort-mark" aria-hidden="true"></span></button></th>
-          <th class="num"><button type="button" class="sort" data-sort="size"><span data-i18n="files.size">Size</span><span class="sort-mark" aria-hidden="true"></span></button></th>
+          <th class="num size-col"><button type="button" class="sort" data-sort="size"><span data-i18n="files.size">Size</span><span class="sort-mark" aria-hidden="true"></span></button></th>
           <th class="num date-col"><button type="button" class="sort" data-sort="modified"><span data-i18n="files.modified">Modified</span><span class="sort-mark" aria-hidden="true"></span></button></th>
-          <th></th>
+          <th class="actions-col"></th>
         </tr></thead>
         <tbody id="entries"></tbody>
       </table>

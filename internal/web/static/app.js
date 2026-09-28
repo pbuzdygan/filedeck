@@ -383,14 +383,17 @@ const where = (space, path) => spaceLabel(space) + (path === '.' ? '' : ' / ' + 
 function renderSpaces() {
   const nav = $('spaces');
   nav.replaceChildren();
-  const list = browsable();
+  // "My files" always comes first, set apart by a separator; the other spaces
+  // follow in alphabetical order (as returned by the server).
+  const list = browsable().sort((a, b) => (b.name === 'files') - (a.name === 'files'));
   nav.hidden = list.length < 2;
-  for (const s of list) {
+  list.forEach((s, i) => {
+    if (i === 1 && list[0].name === 'files') nav.append(el('span', { className: 'tab-sep', 'aria-hidden': 'true', text: '|' }));
     nav.append(el('button', {
       type: 'button', className: 'tab' + (s.name === state.space ? ' active' : ''),
       title: s.read_only ? t('files.read_only') : '', on: { click: () => navigate(s.name, '.') },
     }, icon(s.name === 'files' ? 'home' : 'server-2'), spaceLabel(s.name), s.read_only ? icon('lock') : null));
-  }
+  });
 }
 
 function renderCrumbs(path) {
@@ -522,11 +525,13 @@ function renderEntries() {
     const target = searching ? entry.path : join(path, entry.name);
     const label = searching ? target.slice(base.length) : entry.name;
     const parent = target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '.';
+    // Long names are cut with an ellipsis (CSS); the full name is in the tooltip.
+    const text = el('span', { className: 'label', text: label });
     let name;
-    if (entry.directory) name = el('button', { type: 'button', className: 'link name', on: { click: () => navigate(space, target) } }, icon('folder'), label);
-    else if (!canRead) name = el('span', { className: 'name' }, icon(fileIcon(entry.name)), label);
-    else if (searching) name = el('button', { type: 'button', className: 'link name', title: t('action.preview'), on: { click: () => showInFolder(parent, entry.name, true) } }, icon(fileIcon(entry.name)), label);
-    else name = el('button', { type: 'button', className: 'link name', title: t('action.preview'), on: { click: () => openPreview(entry.name) } }, icon(fileIcon(entry.name)), label);
+    if (entry.directory) name = el('button', { type: 'button', className: 'link name', title: label, on: { click: () => navigate(space, target) } }, icon('folder'), text);
+    else if (!canRead) name = el('span', { className: 'name', title: label }, icon(fileIcon(entry.name)), text);
+    else if (searching) name = el('button', { type: 'button', className: 'link name', title: label, on: { click: () => showInFolder(parent, entry.name, true) } }, icon(fileIcon(entry.name)), text);
+    else name = el('button', { type: 'button', className: 'link name', title: label, on: { click: () => openPreview(entry.name) } }, icon(fileIcon(entry.name)), text);
     const actions = el('span', { className: 'row-actions' });
     if (!entry.directory && canRead) actions.append(el('a', { href: '/api/content?' + q(space, target), download: entry.name, className: 'icon-action', tip: t('action.download') }, icon('download')));
     if (searching) {
@@ -1367,13 +1372,24 @@ async function openAdmin() {
         if (u.id === state.user.id) sessionEnded(t('admin.self_password'));
       } catch (e) { notify(describe(e)); }
     } } });
+    // Own account cannot be deleted (it would end this session); the server enforces it too.
+    const remove = u.id === state.user.id ? null : el('button', { type: 'button', className: 'danger', on: { click: async () => {
+      const password = reauth();
+      if (!password) return;
+      if (!await ask({ title: t('admin.delete_title'), text: t('admin.delete_text', { name: u.username }), ok: t('admin.delete') })) return;
+      try {
+        await api('DELETE', '/api/users/' + encodeURIComponent(u.id), { json: { reauth_password: password } });
+        notify(t('admin.deleted', { name: u.username }), 'ok');
+        openAdmin();
+      } catch (e) { notify(describe(e)); }
+    } } }, icon('trash'), el('span', { text: t('admin.delete') }));
     list.append(el('article', { className: 'user' },
       el('div', { className: 'row between wrap' },
         el('strong', { className: 'name', text: u.username }),
         el('div', { className: 'row wrap' },
           el('label', { className: 'check' }, admin, ' ' + t('admin.administrator')),
           el('label', { className: 'check' }, disabled, ' ' + t('admin.disabled')),
-          save)),
+          save, remove)),
       grants.node,
       el('div', { className: 'row wrap' }, next, reset)));
   }

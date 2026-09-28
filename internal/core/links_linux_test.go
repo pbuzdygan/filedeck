@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,8 +74,20 @@ func TestPublicLinks(t *testing.T) {
 	if got := readLink(t, openLink(t, m.s, token), "."); got != "report" {
 		t.Fatal(got)
 	}
-	if _, err = m.s.OpenLink(token[:len(token)-1] + "A"); !errors.Is(err, ErrLinkNotFound) {
+	altered := []byte(token)
+	altered[10] ^= 1 // still base64url, different bytes
+	if _, err = m.s.OpenLink(string(altered)); !errors.Is(err, ErrLinkNotFound) {
 		t.Fatalf("altered token: %v", err)
+	}
+	// A non-canonical spelling of the same bytes (unused low bits of the last
+	// character set) is rejected too.
+	last := token[len(token)-1]
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	variant := token[:len(token)-1] + string(alphabet[strings.IndexByte(alphabet, last)|1])
+	if variant != token {
+		if _, err = m.s.OpenLink(variant); !errors.Is(err, ErrLinkNotFound) {
+			t.Fatalf("non-canonical token accepted: %v", err)
+		}
 	}
 
 	// Password: checked with a constant-time digest, never stored in clear.

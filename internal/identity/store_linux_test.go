@@ -262,3 +262,45 @@ func TestUsernamesCannotCollideByCaseOrUnicode(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDeleteAccount(t *testing.T) {
+	s, _, admin := setup(t)
+	ctx := context.Background()
+	if _, e := s.Delete(admin.ID); !errors.Is(e, ErrLastAdmin) {
+		t.Fatalf("last administrator deleted: %v", e)
+	}
+	u, e := s.Create(ctx, "reader", secret, false, map[string]core.Permission{"files": core.Read})
+	if e != nil {
+		t.Fatal(e)
+	}
+	l := login(t, s, "reader", secret)
+	removed, e := s.Delete(u.ID)
+	if e != nil || removed.Username != "reader" {
+		t.Fatal(removed, e)
+	}
+	if _, e = s.Authenticate(l.Token); !errors.Is(e, ErrAuth) {
+		t.Fatalf("session survived deletion: %v", e)
+	}
+	if _, e = s.Login(ctx, "reader", secret); !errors.Is(e, ErrAuth) {
+		t.Fatalf("deleted account can log in: %v", e)
+	}
+	if _, e = s.Delete(u.ID); !errors.Is(e, ErrNotFound) {
+		t.Fatal(e)
+	}
+	// The name is free again; the new account is a different identity.
+	again, e := s.Create(ctx, "reader", secret, false, nil)
+	if e != nil || again.ID == u.ID {
+		t.Fatal(again, e)
+	}
+	// With a second active administrator, the first one can be deleted.
+	other, _ := s.Create(ctx, "second", secret, true, nil)
+	if _, e = s.Delete(admin.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Delete(other.ID); !errors.Is(e, ErrLastAdmin) {
+		t.Fatal(e)
+	}
+	if users, _ := s.Users(); len(users) != 2 {
+		t.Fatalf("users %+v", users)
+	}
+}

@@ -250,7 +250,9 @@ func classify(err error) (int, string) {
 		return 413, "too_large"
 	case errors.Is(err, core.ErrNotFound), errors.Is(err, identity.ErrNotFound), errors.Is(err, os.ErrNotExist), errors.Is(err, core.ErrNoSpace), errors.Is(err, core.ErrTrashNotFound), errors.Is(err, core.ErrJobNotFound):
 		return 404, "not_found"
-	case errors.Is(err, storage.ErrConflict), errors.Is(err, core.ErrOffset), errors.Is(err, core.ErrIncomplete), errors.Is(err, identity.ErrExists), errors.Is(err, identity.ErrLastAdmin):
+	case errors.Is(err, identity.ErrLastAdmin):
+		return 409, "last_admin"
+	case errors.Is(err, storage.ErrConflict), errors.Is(err, core.ErrOffset), errors.Is(err, core.ErrIncomplete), errors.Is(err, identity.ErrExists):
 		return 409, "conflict"
 	case errors.Is(err, storage.ErrLimit):
 		return 422, "listing_limit"
@@ -921,6 +923,31 @@ func (a *API) adminRoutes() {
 			return
 		}
 		reply(w, 200, u)
+	}, true, true))
+	// Deleting an account ends its sessions, clears its file permissions and so
+	// removes its public links. Administrators cannot delete their own account
+	// (that would end the session doing it); the last administrator stays.
+	a.mux.HandleFunc("DELETE /api/users/{id}", a.auth(func(w http.ResponseWriter, r *http.Request, l identity.Login) {
+		var in struct {
+			Reauth string `json:"reauth_password"`
+		}
+		if !decode(w, r, &in) || !a.reauth(w, r, l, in.Reauth) {
+			return
+		}
+		if r.PathValue("id") == l.User.ID {
+			fail(w, 409, "delete_self")
+			return
+		}
+		u, err := a.store.Delete(r.PathValue("id"))
+		if err != nil {
+			problem(w, err)
+			return
+		}
+		if err = a.files.SetPermissions(u.ID, nil); err != nil {
+			problem(w, err)
+			return
+		}
+		w.WriteHeader(204)
 	}, true, true))
 	a.mux.HandleFunc("POST /api/users/{id}/password", a.auth(func(w http.ResponseWriter, r *http.Request, l identity.Login) {
 		var in struct {

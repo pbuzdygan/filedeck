@@ -153,9 +153,10 @@ async function render() {
   body.replaceChildren();
   for (const e of entries) {
     const target = path === '.' ? e.name : path + '/' + e.name;
+    const label = el('span', { className: 'label', text: e.name });
     const name = e.directory
-      ? el('a', { href: '#/' + target.split('/').map(encodeURIComponent).join('/'), className: 'link name' }, icon('folder'), e.name)
-      : el('span', { className: 'name' }, icon(fileIcon(e.name)), e.name);
+      ? el('a', { href: '#/' + target.split('/').map(encodeURIComponent).join('/'), className: 'link name', title: e.name }, icon('folder'), label)
+      : el('span', { className: 'name', title: e.name }, icon(fileIcon(e.name)), label);
     const actions = el('span', { className: 'row-actions' });
     if (!e.directory) actions.append(el('a', { href: contentURL(target), download: e.name, className: 'icon-action', tip: t('action.download') }, icon('download')));
     body.append(el('tr', {}, el('td', {}, name),

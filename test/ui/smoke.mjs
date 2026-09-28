@@ -346,6 +346,29 @@ await page.locator('#links-entries tr', { hasText: 'Not working' }).waitFor();
 await page.locator('#close-links').click();
 step('shared links: revoke, rename ends the link, status shown');
 
+// ---- long names are cut, the table keeps its width; "My files" is the first tab
+await page.evaluate(() => { location.hash = '#/files'; });
+await row(page, 'Dokumenty').waitFor();
+const longName = 'a-very-long-video-file-name-'.repeat(7) + 'S01E01.mkv';
+await page.setInputFiles('#upload-input', [{ name: longName, mimeType: 'video/x-matroska', buffer: Buffer.from('x') }]);
+await row(page, longName).waitFor();
+const layout = await page.evaluate(() => {
+  const box = document.querySelector('#drop');
+  const heights = [...document.querySelectorAll('#entries .row-actions')].map((a) => a.getBoundingClientRect().height);
+  const label = document.querySelector('#entries .name .label');
+  return { overflow: box.scrollWidth > box.clientWidth + 1, actions: Math.max(...heights), rows: Math.max(...[...document.querySelectorAll('#entries tr')].map((r) => r.getBoundingClientRect().height)), cut: [...document.querySelectorAll('#entries .name .label')].some((l) => l.scrollWidth > l.clientWidth) };
+});
+if (layout.overflow) problems.push('file table scrolls horizontally');
+if (layout.actions > 40 || layout.rows > 60) problems.push('row actions wrap or rows grow: ' + JSON.stringify(layout));
+if (!layout.cut) problems.push('long name not cut with an ellipsis');
+await page.screenshot({ path: 'out/long-names.png' });
+const orderedTabs = await page.locator('#spaces .tab').allTextContents();
+if (orderedTabs.length > 1) {
+  const rest = orderedTabs.slice(1);
+  if (!orderedTabs[0].startsWith('My files') || await page.locator('#spaces .tab-sep').count() !== 1 || rest.join() !== [...rest].sort().join()) problems.push('tab order: ' + orderedTabs.join(', '));
+}
+step('long names cut, one row of actions, "My files" tab first');
+
 // ---- language: switch to Polish and back
 await page.locator('#lang').click();
 await page.locator('#upload-label:visible, #readonly:visible').filter({ hasText: /Wyślij pliki|tylko do odczytu/ }).first().waitFor();
@@ -389,6 +412,19 @@ if (hasNas && !janTabs.some((t) => t.startsWith('nas'))) problems.push('granted 
 if (await jan.locator('#upload-label').isVisible() || await jan.locator('#mkdir-form').isVisible() || await jan.locator('#open-trash').isVisible()) problems.push('read-only user sees write controls');
 if (await jan.getByRole('button', { name: 'Move to trash' }).count() !== 0) problems.push('read-only user sees delete');
 step('read-only user: only granted spaces, no write controls');
+
+// ---- delete a user: their session ends
+await page.getByRole('button', { name: 'Users' }).click();
+await page.getByRole('heading', { name: 'Users' }).waitFor();
+if (await page.locator('#users .user').filter({ has: page.locator('strong.name', { hasText: new RegExp('^' + ADMIN + '$') }) }).getByRole('button', { name: 'Delete user' }).count() !== 0) problems.push('own account can be deleted from the UI');
+await page.locator('#reauth').fill(PASSWORD);
+await page.locator('#users .user').filter({ hasText: 'jan' }).getByRole('button', { name: 'Delete user' }).click();
+await confirmDialog(page, 'Delete user');
+await page.locator('#users .user').filter({ hasText: 'jan' }).waitFor({ state: 'detached' });
+await jan.reload();
+await jan.getByRole('heading', { name: 'Sign in' }).waitFor();
+await page.locator('#close-admin').click();
+step('admin: delete a user, their session ends');
 
 await page.getByRole('button', { name: 'Log out' }).click();
 await page.getByRole('heading', { name: 'Sign in' }).waitFor();

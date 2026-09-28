@@ -139,7 +139,7 @@ The web interface is at `-origin`. `-insecure-local` allows HTTP on a loopback a
 | `POST /api/uploads` | `{"space","path","size"}` → upload ID |
 | `PATCH /api/uploads/{id}` | `application/octet-stream` chunk, `Upload-Offset` header |
 | `GET`/`DELETE /api/uploads/{id}`, `POST /api/uploads/{id}/commit` | status (`state`, confirmed `offset`), cancellation, publication — a repeated commit returns the stored result |
-| `GET`/`POST /api/users`, `PUT /api/users/{id}`, `POST /api/users/{id}/password` | administration; changes require `reauth_password` |
+| `GET`/`POST /api/users`, `PUT`/`DELETE /api/users/{id}`, `POST /api/users/{id}/password` | administration; changes require `reauth_password`; deleting ends the account's sessions and removes its public links (not allowed for your own account or the last administrator) |
 | `POST /api/links` | `{"space","path","expires_in_hours","password"}` → `url` of the public link (shown only once) |
 | `GET /api/links[?all=1]`, `DELETE /api/links/{id}` | own links with their `available` state (administrator: all), revocation |
 | `GET /s/{token}`, `GET /api/public/{token}[/files?path=\|/content?path=]`, `POST /api/public/{token}/unlock` | link page and API without signing in: information, folder listing, download, unlocking with a password |

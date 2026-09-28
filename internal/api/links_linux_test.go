@@ -200,3 +200,29 @@ func TestSlowDownloadIsNotCutOff(t *testing.T) {
 		t.Fatalf("received %d of %d bytes in %v", got, len(data), time.Since(start))
 	}
 }
+
+func TestDeleteUserOverHTTP(t *testing.T) {
+	f := setup(t)
+	admin := f.login(t, "admin")
+	reader := f.login(t, "reader")
+	os.WriteFile(filepath.Join(f.root, "a.txt"), []byte("a"), 0600)
+	token, _ := f.createLink(t, reader, "a.txt", "")
+	del := func(id, reauth string, c client) *httptest.ResponseRecorder {
+		return f.request("DELETE", "/api/users/"+id, map[string]string{"reauth_password": reauth}, c, nil)
+	}
+	status(t, del(f.reader.ID, password, reader), 403) // administrators only
+	status(t, del(f.reader.ID, "wrong password!!", admin), 403)
+	w := del(f.admin.ID, password, admin)
+	status(t, w, 409)
+	if !strings.Contains(w.Body.String(), "delete_self") {
+		t.Fatal(w.Body.String())
+	}
+	status(t, del(f.reader.ID, password, admin), 204)
+	status(t, f.request("GET", "/api/auth/me", nil, reader, nil), 401)
+	status(t, f.request("GET", "/api/public/"+token, nil, client{}, nil), 404)
+	status(t, del(f.reader.ID, password, admin), 404)
+	w = f.request("PUT", "/api/users/"+f.admin.ID, map[string]any{"admin": false, "disabled": false, "spaces": map[string]int{}, "reauth_password": password}, admin, nil)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "last_admin") {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}

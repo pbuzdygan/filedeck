@@ -27,6 +27,7 @@ Filedeck is a web file browser written from scratch as a successor to File Brows
 - **Light, dark or automatic theme** (following the system), remembered.
 - **English (default) and Polish** with a language switch, remembered.
 - **Change your own password**; the administrator can also set a new password for someone else.
+- **Delete users** — the administrator can remove an account from the Users panel. The person is signed out at once and their public links stop working; files they uploaded stay where they are. Your own account and the last administrator cannot be deleted.
 - **Check a network drive before use** — the `selftest` command tells you whether a mounted share (SMB/NFS) supports everything Filedeck needs, before you start writing to it.
 - **Installation with Docker Compose** with its own HTTPS certificate, access from the local network and an automatic health check ("healthy" status).
 - **Ready-made images to download** — every release goes to the image registry in a separate channel: stable (`latest`, version number) and development (`dev_latest`, `dev` + number). Updating a server means pulling a new image instead of building it on the spot. Images run on regular servers (x86-64) as well as on ARM (e.g. Raspberry Pi 4/5, ARM servers).
@@ -40,6 +41,8 @@ Filedeck is a web file browser written from scratch as a successor to File Brows
 - **Links do not survive changes** — a link stops working when the file is moved, renamed or deleted (also through a network drive or another program) and when its owner loses access to that place. A new file with the same name will not be shared by accident through an old link.
 - **Account changes take effect immediately** — changing a password, disabling an account or changing permissions ends all of that person's sessions at once.
 - **Notifications instead of sections under the file list** — operations no longer take up space below the table. Short notifications disappear on their own after a few seconds, at most 3 at a time, so they do not cover buttons; the rest is under the bell.
+- **"My files" always first** — among the space tabs, "My files" is always on the left, set apart by a separator; the other spaces follow in alphabetical order.
+- **Long file names no longer break the list** — very long names are cut with "…" (the full name appears when you point at it), so the size, date and action icons always stay in one tidy row, and the list uses more of the screen width.
 - **Clearer row actions** — icons with a tooltip on hover; rename has its own recognisable icon.
 - **Polished light theme** with a new colour palette.
 - **Works without internet** — icons and all page elements are built into the application.
@@ -55,5 +58,6 @@ Filedeck is a web file browser written from scratch as a successor to File Brows
 - After reloading the page, operations finished earlier no longer pop up again as new notifications.
 - Downloads of large files broke off after about a minute on slower connections. Now a download lasts as long as data keeps flowing.
 - Rows in the trash had misaligned table lines.
+- Trying to demote, disable or delete the last administrator showed a misleading "name already exists" message. It now says clearly that the last administrator must stay.
 - Tooltips of the buttons in the top bar went off-screen.
 - After signing in, the alphabetically first space opened, even when it was read-only. Now the one you can work in opens.

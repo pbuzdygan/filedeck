@@ -1,6 +1,6 @@
 # Progress
 
-2026-09-28 — stage 1: core prototype; stage 2: accounts, sessions and HTTP API; stage 3: durable, resumable uploads; stage 4: web interface and Docker Compose deployment; stage 5: spaces, per-space permissions, rename and trash; stage 6: preview, editor, copy/move, drag & drop, theme, security review; stage 7: EN/PL, notifications, selection, folder upload; stage 8: reauth fix, share selftest, sorting, search; stage 9: public links; release preparation.
+2026-09-28 — stage 1: core prototype; stage 2: accounts, sessions and HTTP API; stage 3: durable, resumable uploads; stage 4: web interface and Docker Compose deployment; stage 5: spaces, per-space permissions, rename and trash; stage 6: preview, editor, copy/move, drag & drop, theme, security review; stage 7: EN/PL, notifications, selection, folder upload; stage 8: reauth fix, share selftest, sorting, search; stage 9: public links; release preparation; stage 10: user deletion, tab order, file table layout.
 
 ## Stage 1 — core
 
@@ -215,6 +215,17 @@ Verification: Go tests with the race detector, `TestTranslations` (extended to t
 ## Release preparation
 
 The local server configuration (a space from a host directory) moved from `compose.yaml` to the git-ignored `compose.override.yaml` — the effective configuration of the instance is unchanged (compared with `docker compose config`). `.gitignore` covers `.env`, the override, `reference/`, the binary, test artifacts and editor files; `.dockerignore` lets only the code into the build. Workflow `release.yml`: images only from a published release, channels `main` (tag `X.Y.Z` → image `X.Y.Z`, `latest`) and `dev` (tag `devX.Y.Z` → image `devX.Y.Z`, `dev_latest`), images for `linux/amd64` and `linux/arm64` through cross-compilation (checked locally: image and binary architecture), with checks of the branch, format, pre-release, no overwriting of versions and moving tags only moving forward; the planning logic was checked by a simulation on a local repository (correct releases, a tag from another branch, a wrong format, a pre-release on `main`, an older version). The workflow has not run in GitHub Actions yet. All documentation is now in English only (see `AGENTS.md`).
+
+## Stage 10 — user deletion, tab order and file table layout
+
+Based on the user's testing with several spaces, including SMB shares (upload and deletion worked correctly):
+
+- **Deleting users** — a "Delete user" button in the Users panel (not shown for your own account), with confirmation and reauth; `DELETE /api/users/{id}`. Sessions end immediately and the account's public links are removed; the last administrator stays (`TestDeleteAccount`, `TestDeleteUserOverHTTP`, browser step). The last-administrator refusal now has its own error code `last_admin` with a clear message instead of the generic `conflict`.
+- **Tab order** — "My files" always first, followed by a `|` separator and the other spaces in alphabetical order.
+- **File table** — fixed column widths (`table-layout: fixed`), long names cut with an ellipsis and shown in full in the tooltip, action icons always in one row, main area widened from 1180 to 1440 px; on narrow screens the date column is hidden. The same applies to the public folder page. The browser test checks that the table does not scroll horizontally, actions do not wrap and a 200-character name is cut.
+- **Found along the way:** the public-link token decoding accepted non-canonical base64 spellings of the same token (harmless — the secret is still required — but it made one test flaky, 1 in 16 runs). Decoding is now strict.
+
+Verification: Go tests, `TestTranslations`, Chromium 25 steps on an instance with two extra spaces — no console or CSP errors.
 
 ## Known limitations
 

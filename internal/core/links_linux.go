@@ -68,8 +68,9 @@ type linkRecord struct {
 }
 
 // linkKey maps a token (32 random bytes, base64url) to its database key.
+// Strict decoding accepts only the canonical form: no second spelling of a token.
 func linkKey(token string) (string, bool) {
-	b, err := base64.RawURLEncoding.DecodeString(token)
+	b, err := base64.RawURLEncoding.Strict().DecodeString(token)
 	if err != nil || len(b) != 32 {
 		return "", false
 	}

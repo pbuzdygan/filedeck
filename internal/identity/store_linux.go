@@ -543,21 +543,8 @@ func (s *Store) Update(id string, admin, disabled bool, grants map[string]core.P
 			return e
 		}
 		if a.User.Admin && !a.User.Disabled && (!admin || disabled) {
-			admins := 0
-			if e = tx.Bucket(usersBucket).ForEach(func(_, v []byte) error {
-				var other account
-				if er := json.Unmarshal(v, &other); er != nil {
-					return er
-				}
-				if other.User.Admin && !other.User.Disabled {
-					admins++
-				}
-				return nil
-			}); e != nil {
+			if e = requireAnotherAdmin(tx); e != nil {
 				return e
-			}
-			if admins <= 1 {
-				return ErrLastAdmin
 			}
 		}
 		a.User.Admin = admin
@@ -575,6 +562,55 @@ func (s *Store) Update(id string, admin, disabled bool, grants map[string]core.P
 	})
 	return result, err
 }
+
+// requireAnotherAdmin fails unless more than one active administrator exists.
+func requireAnotherAdmin(tx *bolt.Tx) error {
+	admins := 0
+	if e := tx.Bucket(usersBucket).ForEach(func(_, v []byte) error {
+		var other account
+		if er := json.Unmarshal(v, &other); er != nil {
+			return er
+		}
+		if other.User.Admin && !other.User.Disabled {
+			admins++
+		}
+		return nil
+	}); e != nil {
+		return e
+	}
+	if admins <= 1 {
+		return ErrLastAdmin
+	}
+	return nil
+}
+
+// Delete removes an account, its name and all its sessions in one transaction.
+// The last active administrator cannot be deleted. The caller must also clear
+// the account's file permissions (which removes its public links).
+func (s *Store) Delete(id string) (User, error) {
+	var removed User
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		a, e := readAccount(tx, id)
+		if e != nil {
+			return e
+		}
+		if a.User.Admin && !a.User.Disabled {
+			if e = requireAnotherAdmin(tx); e != nil {
+				return e
+			}
+		}
+		if e = revoke(tx, id); e != nil {
+			return e
+		}
+		if e = tx.Bucket(namesBucket).Delete([]byte(a.User.Username)); e != nil {
+			return e
+		}
+		removed = a.User
+		return tx.Bucket(usersBucket).Delete([]byte(id))
+	})
+	return removed, err
+}
+
 func (s *Store) RequireInitialized() error {
 	users, e := s.Users()
 	if e != nil {
