@@ -1,0 +1,6 @@
+/demo/
+/bin/
+/coverage.out
+/.env
+/compose.override.yaml
+/reference/
