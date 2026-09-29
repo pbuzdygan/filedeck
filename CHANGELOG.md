@@ -2,6 +2,12 @@
 
 Changes to Filedeck described from the user's point of view: what you will see, what you can use, what changes in your work. Technical details and tests: [docs/PROGRESS.md](docs/PROGRESS.md), security: [docs/SECURITY.md](docs/SECURITY.md).
 
+## 0.1.1
+
+### Improvements
+
+- **Simple setup behind Nginx Proxy Manager and other proxies** — two settings are enough: the address people open and the address of the proxy. Filedeck switches off its own certificate by itself, works with the usual "server IP and port" setup as well as with a proxy in the same Docker network, and when something does not match, the log says exactly what to put in the settings (and a wrong address in the browser tells you the right one).
+
 ## 0.1.0
 
 Filedeck is a web file browser written from scratch as a successor to File Browser — built so that you cannot accidentally lose data or get around permissions.
@@ -44,7 +50,6 @@ Filedeck is a web file browser written from scratch as a successor to File Brows
 - **Account changes take effect immediately** — changing a password, disabling an account or changing permissions ends all of that person's sessions at once.
 - **Notifications instead of sections under the file list** — operations no longer take up space below the table. Short notifications disappear on their own after a few seconds, at most 3 at a time, so they do not cover buttons; the rest is under the bell.
 - **Ready to be published on the internet behind a reverse proxy** — someone guessing passwords no longer blocks signing in for everyone else: limits now apply to each visitor separately, also behind a proxy. The browser is told to always use HTTPS for Filedeck.
-- **Simple setup behind Nginx Proxy Manager and other proxies** — two settings are enough: the address people open and the address of the proxy. Filedeck switches off its own certificate by itself, works with the usual "server IP and port" setup as well as with a proxy in the same Docker network, and when something does not match, the log says exactly what to put in the settings (and a wrong address in the browser tells you the right one).
 - **Security log** — sign-ins, failed attempts, account changes and shared links are recorded in the server log with the visitor's address (never passwords or codes), so you can see who tries to get in and let tools such as fail2ban or CrowdSec block them.
 - **"My files" always first** — among the space tabs, "My files" is always on the left, set apart by a separator; the other spaces follow in alphabetical order.
 - **Long file names no longer break the list** — very long names are cut with "…" (the full name appears when you point at it), so the size, date and action icons always stay in one tidy row, and the list uses more of the screen width.
