@@ -182,7 +182,11 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !strings.EqualFold(r.Host, a.origin.Host) {
-		fail(w, 421, "unexpected_host")
+		// Say where Filedeck lives (the origin is public anyway: it is in links
+		// and in the certificate), so an address typo or a proxy that does not
+		// pass Host is easy to spot.
+		a.event(withClient(r, a.clientAddr(peer, r)), slog.LevelWarn, "unexpected_host", "host", short(r.Host), "expected", a.origin.Host)
+		reply(w, 421, map[string]string{"error": "unexpected_host", "expected_origin": a.config.Origin})
 		return
 	}
 	if a.config.InsecureLocal {
@@ -192,7 +196,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if a.proxy.IsValid() {
 		if !a.proxy.Contains(peer) {
-			a.event(withClient(r, peer), slog.LevelWarn, "untrusted_proxy", "path", short(r.URL.Path))
+			// The most common setup mistake: tell the operator the exact value.
+			a.event(withClient(r, peer), slog.LevelWarn, "untrusted_proxy", "path", short(r.URL.Path),
+				"hint", "connection not from FILEDECK_PROXY_CIDR="+a.proxy.String()+"; if "+peer.String()+" is your reverse proxy, set FILEDECK_PROXY_CIDR="+peer.String()+"/"+strconv.Itoa(peer.BitLen()))
 			fail(w, 403, "untrusted_proxy")
 			return
 		}

@@ -163,6 +163,9 @@ func TestCSRFOriginAndHostBoundaries(t *testing.T) {
 	w := httptest.NewRecorder()
 	f.app.ServeHTTP(w, r)
 	status(t, w, 421)
+	if !strings.Contains(w.Body.String(), `"expected_origin":"`+publicOrigin+`"`) {
+		t.Fatal(w.Body.String())
+	}
 	r = httptest.NewRequest("GET", publicOrigin+"/api/files?space=files", nil)
 	r.RemoteAddr = "127.0.0.1:42"
 	r.TLS = nil

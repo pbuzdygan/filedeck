@@ -13,7 +13,9 @@ services:
     environment:
       # Exactly the address typed in the browser (scheme, host, port).
       FILEDECK_ORIGIN: "${FILEDECK_ORIGIN:-https://localhost:${FILEDECK_PORT:-8443}}"
-      FILEDECK_TLS_SELF_SIGNED: "${FILEDECK_TLS_SELF_SIGNED:-true}"
+      # Empty = automatic: own self-signed certificate, or plain HTTP when
+      # FILEDECK_PROXY_CIDR is set (the reverse proxy terminates TLS).
+      FILEDECK_TLS_SELF_SIGNED: "${FILEDECK_TLS_SELF_SIGNED:-}"
       FILEDECK_PROXY_CIDR: "${FILEDECK_PROXY_CIDR:-}"
       # Encrypts two-factor secrets; keep it outside the data volume and back it up.
       FILEDECK_SECRET_KEY: "${FILEDECK_SECRET_KEY:-}"

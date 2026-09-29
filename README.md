@@ -80,20 +80,28 @@ After `docker compose up -d` the log shows `Space "nas": read-write`. The admini
 
 ### Behind a reverse proxy (production)
 
-The proxy (Caddy, Traefik, nginx) terminates TLS with a real certificate and connects to the container over HTTP on the Docker network:
+The proxy (Nginx Proxy Manager, Caddy, Traefik, nginx) terminates TLS with a real certificate and talks plain HTTP to Filedeck. Two settings in `.env`:
 
 ```sh
-FILEDECK_TLS_SELF_SIGNED=false
-FILEDECK_PROXY_CIDR=172.30.0.0/16     # subnet the proxy connects from
-FILEDECK_ORIGIN=https://files.example.org
+FILEDECK_ORIGIN=https://files.example.org   # the address people open
+FILEDECK_PROXY_CIDR=172.18.0.1/32           # where Filedeck sees the proxy connect from
 ```
+
+Setting `FILEDECK_PROXY_CIDR` switches off Filedeck's own certificate by itself (`FILEDECK_TLS_SELF_SIGNED` can stay empty). Which address to trust depends on how the proxy reaches Filedeck:
+
+| The proxy forwards to | `FILEDECK_PROXY_CIDR` | In Nginx Proxy Manager |
+|---|---|---|
+| the server's IP and the published port (`ports: "8543:8443"` — e.g. when 8443 is taken on the host) | the gateway of Filedeck's Docker network, e.g. `172.18.0.1/32` (computers on the LAN connect with their own address and are refused) | scheme `http`, host `192.168.1.10`, port `8543` |
+| the container directly, both in the same Docker network (no `ports:` needed) | the proxy container's address, e.g. `172.18.0.5/32` | scheme `http`, host `filedeck`, port `8443` |
+
+**Not sure which address?** Put anything there, open the site through the proxy and look at `docker compose logs filedeck`: the line `untrusted_proxy client=172.18.0.1 … set FILEDECK_PROXY_CIDR=172.18.0.1/32` gives the exact value. At start the log also says `Behind a reverse proxy: plain HTTP on :8443, accepted only from …`. Opening Filedeck by IP address instead of its name returns `unexpected_host` with the expected address — use the name from `FILEDECK_ORIGIN`.
 
 The address of public links is built from `FILEDECK_ORIGIN` — set it to the address under which recipients of links can reach Filedeck. Connections from outside `FILEDECK_PROXY_CIDR` are rejected. Identity comes only from the session; `X-Forwarded-For` is read only from the trusted proxy and only to find the visitor's address for rate limits and the security log (it is read from the right, skipping hops inside the CIDR, so an address a visitor adds themselves is never used).
 
 Checklist for the proxy:
 
 - pass the original `Host` header and set `X-Forwarded-For` (nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` — Nginx Proxy Manager, Caddy and Traefik do this by default);
-- do not publish the container port on the host (remove `ports:` or bind `127.0.0.1`), otherwise the proxy can be bypassed;
+- trust only the proxy's address in `FILEDECK_PROXY_CIDR` (a `/32`), not a whole network — then a published port cannot be used to bypass the proxy: other connections get `untrusted_proxy`;
 - allow request bodies of at least 16 MB (an upload chunk is 8 MiB) and long read timeouts, so large downloads are not cut off;
 - access logs of the proxy contain public link tokens (`/s/<token>`, `/api/public/<token>`): keep them private or mask these paths;
 - HSTS: Filedeck sends `Strict-Transport-Security: max-age=31536000` itself (without `includeSubDomains`); enabling it in the proxy as well is harmless.

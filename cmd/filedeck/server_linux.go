@@ -182,6 +182,9 @@ func serve(files *core.Service, state string, limits core.Limits, o serverOption
 		}
 	}()
 	fmt.Fprintln(os.Stderr, "Filedeck listening on", listener.Addr(), "- open", o.origin)
+	if o.proxy != "" {
+		fmt.Fprintf(os.Stderr, "Behind a reverse proxy: plain HTTP on %s, accepted only from %s; the proxy must pass the Host header %q.\n", o.listen, o.proxy, strings.TrimPrefix(strings.TrimPrefix(o.origin, "https://"), "http://"))
+	}
 	for _, sp := range files.Spaces() {
 		mode := "read-write"
 		if sp.ReadOnly {
