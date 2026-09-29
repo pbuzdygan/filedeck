@@ -67,7 +67,7 @@ The server is an LXC with 6 GB RAM, 3 CPUs and **no swap**. `/tmp` lives in RAM 
 
 - Work happens on the `dev` branch; `main` is production. Commits and releases only when the user asks.
 - Images are built only from a published GitHub release (`.github/workflows/release.yml`); the release tag equals the image tag: `X.Y.Z` (must be on `main`, not a pre-release) → `X.Y.Z` + `latest`; `devX.Y.Z` (must be on `dev`) → `devX.Y.Z` + `dev_latest`; images for `linux/amd64` and `linux/arm64` (cross-compiled in the Dockerfile, no emulation). The channels never mix; versions are never overwritten.
-- `CHANGELOG.md`: new entries go under the topmost version heading (currently `0.1.0`) until that version is released; after a release, start a new heading for the next version above it.
+- `CHANGELOG.md`: new entries go under the topmost version heading (currently `0.1.1`; `0.1.0` is released) until that version is released; after a release, start a new heading for the next version above it.
 - Never commit `.env`, `compose.override.yaml` (local server paths), `reference/`, test artifacts (`test/ui/node_modules`, `out`, `package*.json`) — `.gitignore` enforces this.
 
 ## The user's instance (production — do not break it)
