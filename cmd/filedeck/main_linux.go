@@ -86,14 +86,27 @@ func envBool(name string) (bool, error) {
 	return b, nil
 }
 
+// autoSelfSigned decides TLS when FILEDECK_TLS_SELF_SIGNED is not set: Filedeck
+// uses its own self-signed certificate unless it has a real one, runs behind
+// a reverse proxy (which terminates TLS and talks plain HTTP to Filedeck) or
+// runs in local development mode.
+func autoSelfSigned(cert, proxy string, insecure bool) bool {
+	return cert == "" && proxy == "" && !insecure
+}
+
 func run(args []string) (err error) {
 	insecureDefault, err := envBool("INSECURE_LOCAL")
 	if err != nil {
 		return err
 	}
-	selfSignedDefault, err := envBool("TLS_SELF_SIGNED")
-	if err != nil {
-		return err
+	// Empty or unset means automatic (see autoSelfSigned).
+	var selfSignedEnv *bool
+	if v := env("TLS_SELF_SIGNED", ""); v != "" {
+		b, e := strconv.ParseBool(v)
+		if e != nil {
+			return fmt.Errorf("FILEDECK_TLS_SELF_SIGNED: invalid boolean %q", v)
+		}
+		selfSignedEnv = &b
 	}
 	fileMode, err := parseMode("FILE_MODE", "0640")
 	if err != nil {
@@ -113,7 +126,7 @@ func run(args []string) (err error) {
 	insecure := flags.Bool("insecure-local", insecureDefault, "allow HTTP only on loopback for development (FILEDECK_INSECURE_LOCAL)")
 	cert := flags.String("tls-cert", env("TLS_CERT", ""), "TLS certificate file (FILEDECK_TLS_CERT)")
 	key := flags.String("tls-key", env("TLS_KEY", ""), "TLS private key file (FILEDECK_TLS_KEY)")
-	selfSigned := flags.Bool("tls-self-signed", selfSignedDefault, "create and reuse a self-signed certificate in state (FILEDECK_TLS_SELF_SIGNED)")
+	selfSigned := flags.Bool("tls-self-signed", selfSignedEnv != nil && *selfSignedEnv, "create and reuse a self-signed certificate in state (FILEDECK_TLS_SELF_SIGNED; empty = automatic: on unless a certificate, a proxy CIDR or insecure-local is set)")
 	proxy := flags.String("proxy-cidr", env("PROXY_CIDR", ""), "trusted reverse-proxy peer CIDR; forwarded identity headers are ignored (FILEDECK_PROXY_CIDR)")
 	flags.Usage = func() {
 		fmt.Fprintln(flags.Output(), "Usage: filedeck [flags] list [PATH] | read PATH | put SOURCE TARGET | bootstrap USER | reset-password USER | reset-2fa USER | serve | healthcheck | selftest DIR\nbootstrap and reset-password read the password from stdin; reset-2fa turns off two-factor authentication for a user who lost their device. Place flags before the command. Every flag can also be set as FILEDECK_<NAME>;\nFILEDECK_FILE_MODE / FILEDECK_DIR_MODE (octal, default 0640 / 0750) set modes of created files and folders;\nFILEDECK_SECRET_KEY (or FILEDECK_SECRET_KEY_FILE) encrypts two-factor secrets: openssl rand -base64 32.")
@@ -123,6 +136,11 @@ func run(args []string) (err error) {
 		return err
 	}
 	rest := flags.Args()
+	explicit := selfSignedEnv != nil
+	flags.Visit(func(f *flag.Flag) { explicit = explicit || f.Name == "tls-self-signed" })
+	if !explicit {
+		*selfSigned = autoSelfSigned(*cert, *proxy, *insecure)
+	}
 	if len(rest) == 1 && rest[0] == "healthcheck" {
 		return healthcheck(*listen, *origin, *insecure || (*cert == "" && !*selfSigned))
 	}

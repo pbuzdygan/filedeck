@@ -194,7 +194,7 @@ func TestClientAddressBehindProxyForLimitsAndLogs(t *testing.T) {
 		t.Fatal(c)
 	}
 	out := logs.String()
-	for _, want := range []string{"msg=login_failed client=203.0.113.5 user=admin reason=password", "msg=rate_limited client=203.0.113.5", "msg=login_failed client=2001:db8:1:2::1", "msg=untrusted_proxy client=192.0.2.1"} {
+	for _, want := range []string{"msg=login_failed client=203.0.113.5 user=admin reason=password", "msg=rate_limited client=203.0.113.5", "msg=login_failed client=2001:db8:1:2::1", "msg=untrusted_proxy client=192.0.2.1", "set FILEDECK_PROXY_CIDR=192.0.2.1/32"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in log:\n%s", want, out)
 		}

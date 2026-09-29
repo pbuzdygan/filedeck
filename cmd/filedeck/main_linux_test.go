@@ -126,6 +126,12 @@ func TestSelftestPassesOnLocalDirectory(t *testing.T) {
 	}
 }
 
+func TestAutomaticTLSMode(t *testing.T) {
+	if !autoSelfSigned("", "", false) || autoSelfSigned("cert.pem", "", false) || autoSelfSigned("", "10.0.0.1/32", false) || autoSelfSigned("", "", true) {
+		t.Fatal("self-signed certificate only without a certificate, a proxy or local mode")
+	}
+}
+
 func TestSecretKeyFromEnvironmentOrFile(t *testing.T) {
 	good := "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=" // 32 bytes of 7
 	file := filepath.Join(t.TempDir(), "key")
