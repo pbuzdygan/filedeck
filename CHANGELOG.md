@@ -6,6 +6,7 @@ Changes to Filedeck described from the user's point of view: what you will see, 
 
 ### Improvements
 
+- **Shorter, clearer README** — it now answers only what Filedeck is, how to install and configure it with Docker Compose, and how to use it. Technical details moved to a separate architecture document.
 - **Simple setup behind Nginx Proxy Manager and other proxies** — two settings are enough: the address people open and the address of the proxy. Filedeck switches off its own certificate by itself, works with the usual "server IP and port" setup as well as with a proxy in the same Docker network, and when something does not match, the log says exactly what to put in the settings (and a wrong address in the browser tells you the right one).
 
 ## 0.1.0

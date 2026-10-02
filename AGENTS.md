@@ -7,6 +7,7 @@ This file is the single source of project context for agents. Read it at the sta
 - **Filedeck** (this repository, Go, Linux + Docker only) is a from-scratch, security-first successor to File Browser. Goal: close the bug classes behind the original's 62 GHSA advisories with a simpler design, not by porting code.
 - `reference/filebrowser/` is an archived fork of the original — **read-only, never modify it**; it is excluded from git (`.gitignore`), so it may not exist in another clone.
 - `docs/analysis/` — analysis of the original (functions, findings, design, advisory register).
+- `README.md` is for users only (what Filedeck is, installation, configuration, use) — keep it short. Technical details (security design, API, development, tests, releases) go into `docs/ARCHITECTURE.md`.
 - Filedeck directories are used at the same time by other applications and SMB/NFS shares: never overwrite, publish atomically, assume files change underneath.
 
 ## Language
@@ -27,7 +28,7 @@ This file is the single source of project context for agents. Read it at the sta
   - the `.filedeck` directory is unreachable.
 - **Changes:**
   - every feature gets Go tests;
-  - when a contract changes, update `docs/CONTRACT.md`;
+  - when a contract changes, update `docs/CONTRACT.md` (and `docs/ARCHITECTURE.md` when the API or design changes);
   - after a stage, add a section to `docs/PROGRESS.md`;
   - describe the effect on advisories in `docs/SECURITY.md`;
   - add a `CHANGELOG.md` entry under New Features, Improvements or Bug Fixes. Write it non-technically: what the user will see, use or notice.
